@@ -5,7 +5,7 @@
          (rep type-rep filter-rep object-rep rep-utils)
          (utils tc-utils early-return)
          (types utils resolve base-abbrev match-expanders
-                numeric-tower substitute current-seen prefab)
+                numeric-tower substitute current-seen prefab signatures)
          (for-syntax racket/base syntax/parse unstable/sequence))
 
 (lazy-require
@@ -686,6 +686,14 @@
                (or (and init-rest init-rest*
                         (sub init-rest init-rest*))
                    (and (not init-rest) (not init-rest*))))]
+               (sub init-rest init-rest*))]
+         [((Unit: imports exports init-depends t) (Unit: imports* exports* init-depends* t*))
+          (and (check-sub-signatures? imports* imports)
+               (check-sub-signatures? exports exports*)
+               ;; checking the init-depends should be unnecessary
+               ;; Racket should ensure they are valid subsets of imports
+               ;; and the signature subsumption should be automatic
+               (subtype* A0 t t*))]
          ;; otherwise, not a subtype
          [(_ _) #f])))
      (when (null? A)

@@ -11,7 +11,8 @@
          syntax/stx (prefix-in c: (contract-req))
          syntax/parse unstable/sequence
          (env tvar-env type-alias-env mvar-env
-              lexical-env index-env row-constraint-env)
+              lexical-env index-env row-constraint-env
+              signature-env)
          racket/dict
          racket/promise
          racket/format
@@ -20,6 +21,7 @@
          "parse-classes.rkt"
          (for-label
            (except-in racket/base case-lambda)
+           racket/unit
            "../base-env/colon.rkt"
            "../base-env/base-types-extra.rkt"
            ;; match on the `case-lambda` binding in the TR primitives
@@ -79,6 +81,10 @@
 (define-literal-syntax-class #:for-label cons)
 (define-literal-syntax-class #:for-label Class)
 (define-literal-syntax-class #:for-label Object)
+(define-literal-syntax-class #:for-label Unit)
+(define-literal-syntax-class #:for-label import)
+(define-literal-syntax-class #:for-label export)
+(define-literal-syntax-class #:for-label init-depend)
 (define-literal-syntax-class #:for-label Refinement)
 (define-literal-syntax-class #:for-label Instance)
 (define-literal-syntax-class #:for-label List)
@@ -364,6 +370,19 @@
                                  "given" v)
                     (make-Instance (Un)))
              (make-Instance v)))]
+      
+      [(:Unit^ (:import^ import:id ...)
+               (:export^ export:id ...)
+               (~optional (:init-depend^ init-depend:id ...) 
+                          #:defaults ([(init-depend 1) null]))
+               result)
+       ;; TODO: error handling when the signature is not in the environment
+       (define id->sig (lambda (id) (lookup-signature id)))
+       (make-Unit (map id->sig (syntax->list #'(import ...)))
+                  (map id->sig (syntax->list #'(export ...)))
+                  (map id->sig (syntax->list #'(init-depend ...)))
+                  (parse-type #'result))]
+      
       [(:List^ ts ...)
        (parse-list-type stx)]
       [(:List*^ ts ... t)

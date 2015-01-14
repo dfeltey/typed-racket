@@ -9,7 +9,8 @@
          (private parse-type type-annotation syntax-properties)
          (env global-env init-envs type-name-env type-alias-env
               lexical-env env-req mvar-env scoped-tvar-env
-              type-alias-helper)
+              signature-env
+              type-alias-helper signature-helper)
          (utils tc-utils)
          (typecheck provide-handling def-binding tc-structs
                     typechecker internal-forms)
@@ -205,6 +206,8 @@
       ;; need to special case this to avoid errors at top-level
       [stx:tr:class^
        (tc-expr #'stx)]
+      [stx:tr:unit^
+       (tc-expr #'stx)]
 
       ;; these forms we have been instructed to ignore
       [stx:ignore^
@@ -275,19 +278,25 @@
 (define (type-check forms0)
   (define forms (syntax->list forms0))
   (do-time "before form splitting")
-  (define-values (type-aliases struct-defs stx-defs0 val-defs0 provs)
+  (define-values (type-aliases struct-defs stx-defs0 val-defs0 provs signature-defs)
     (filter-multiple
      forms
      type-alias? 
      (lambda (e) (or (typed-struct? e) (typed-struct/exec? e)))
      parse-syntax-def
      parse-def
-     provide?))
+     provide?
+     typed-define-signature?))
   (do-time "Form splitting done")
 
   (define-values (type-alias-names type-alias-map)
     (get-type-alias-info type-aliases))
-
+  
+  ;; Add signatures to the signature environment
+  (for ([sig-form signature-defs])
+    (define-values (name sig) (parse-signature sig-form))
+    (register-signature! name sig))
+  
   ;; Add the struct names to the type table, but not with a type
   (let ((names (map name-of-struct struct-defs))
         (type-vars (map type-vars-of-struct struct-defs)))

@@ -74,5 +74,14 @@
   (tr:class:local-table tr:class:local-table)
   (tr:class:name-table tr:class:name-table)
   (tr:class:def tr:class:def)
+  ;; unit properties
+  (tr:unit tr:unit #:mark)
+  (tr:unit:sig-id tr:unit:sig-id)
+  (tr:unit:local-table tr:unit:local-table)
+  (tr:unit:index-table tr:unit:index-table)
+  (tr:unit:body-exp-def-type tr:unit:body-exp-def-type)
+  (tr:unit:annotation tr:unit:annotation)
+  (tr:unit:sig-vars tr:unit:sig-vars)
+  (tr:unit:annotated tr:unit:annotated)
   )
 

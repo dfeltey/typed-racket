@@ -147,14 +147,13 @@
 (define-syntax (define-signature stx)
   (syntax-parse stx
     [(_ sig-name:id super-form:extends-form (form:def-sig-form ...))
-     (ignore
-      (quasisyntax/loc stx
-        (begin
-          #,(internal 
-             #'(define-signature-internal sig-name super-form.internal-form 
-                 (form.internal-form ...)))
-          (untyped-define-signature sig-name #,@(attribute super-form.form) 
-                                    (form.erased ...)))))]))
+     #`(begin
+         #,(ignore (quasisyntax/loc stx
+                     (untyped-define-signature sig-name #,@(attribute super-form.form)
+                                               (form.erased ...))))
+         #,(internal (quasisyntax/loc stx
+                       (define-signature-internal sig-name super-form.internal-form
+                         (form.internal-form ...)))))]))
 
 
 

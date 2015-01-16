@@ -554,6 +554,7 @@
 (def-type Signature ([name identifier?]
                      [extends (or/c Signature? #f)]
                      [mapping (listof (cons/x identifier? syntax?))])
+  ;; TODO: is this correct?
   [#:frees (lambda (f) null)])
 
 ;; interp: imports is the list of imported signatures

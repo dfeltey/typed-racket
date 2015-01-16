@@ -454,6 +454,10 @@
        (register-parsed-struct-sty! parsed)
        (refine-struct-variance! (list parsed))
        (register-parsed-struct-bindings! parsed))
+     ;; Handle signature definitions
+     (when (typed-define-signature? form)
+       (define-values (name signature) (parse-signature form))
+       (register-signature! name signature))
      (tc-toplevel/pass1 form)
      (tc-toplevel/pass1.5 form)
      (begin0 (tc-toplevel/pass2 form #f)

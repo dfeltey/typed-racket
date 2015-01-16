@@ -45,6 +45,7 @@
 ;; filters if they conflict with the argument type.
 (define/cond-contract (subst-tc-results res k o polarity t)
   (-> full-tc-results/c name-ref/c Object? boolean? Type? full-tc-results/c)
+  (printf "subst-tc-results t: ~a\n" t)
   (define (st t) (subst-type t k o polarity))
   (define (sf f) (subst-filter f k o polarity))
   (define (sfs fs) (subst-filter-set fs k o polarity t))
@@ -80,6 +81,8 @@
   (-> Type/c name-ref/c Object? boolean? Type/c)
   (define (st t) (subst-type t k o polarity))
   (define/cond-contract (sf fs) (FilterSet? . -> . FilterSet?) (subst-filter-set fs k o polarity))
+  ;; Debugging issue with units
+  (printf "type-case argument: ~a\n" t)
   (type-case (#:Type st
               #:Filter sf
               #:Object (lambda (f) (subst-object f k o polarity)))

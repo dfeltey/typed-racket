@@ -5,7 +5,8 @@
          (only-in (types abbrev) (-> t:->) [->* t:->*])
          (private type-annotation parse-type syntax-properties)
          (env lexical-env type-alias-helper mvar-env
-              global-env scoped-tvar-env)
+              global-env scoped-tvar-env
+              signature-env signature-helper)
          (rep filter-rep object-rep type-rep)
          syntax/free-vars
          (typecheck signatures tc-metafunctions tc-subst internal-forms tc-envops)
@@ -104,18 +105,24 @@
          [exprs (syntax->list exprs)])
     ;; Collect the declarations, which are represented as expression.
     ;; We put them back into definitions to reuse the existing machinery
-    (define-values (type-aliases declarations)
-      (for/fold ([aliases '()] [declarations '()])
+    (define-values (type-aliases declarations signatures)
+      (for/fold ([aliases '()] [declarations '()] [signatures '()])
                 ([body (in-list exprs)])
         (syntax-parse #`(define-values () #,body)
           [t:type-alias
-           (values (cons #'t aliases) declarations)]
+           (values (cons #'t aliases) declarations signatures)]
           [t:type-declaration
-           (values aliases (cons (list #'t.id #'t.type) declarations))]
-          [_ (values aliases declarations)])))
+           (values aliases (cons (list #'t.id #'t.type) declarations) signatures)]
+          [t:typed-define-signature
+           (values aliases declarations (cons #'t signatures))]
+          [_ (values aliases declarations signatures)])))
 
     (define-values (alias-names alias-map) (get-type-alias-info type-aliases))
     (register-all-type-aliases alias-names alias-map)
+    
+    (for ([sig-form signatures])
+      (define-values (name signature) (parse-signature sig-form))
+      (register-signature! name signature))
 
     (for ([declaration declarations])
       (match-define (list id type) declaration)

@@ -78,7 +78,7 @@
   #:literals (list cons)
   (pattern 
    (#%plain-app list (quote-syntax sig-id:id) 
-                (#%plain-app consx (quote-syntax var-ext:id) 
+                (#%plain-app cons (quote-syntax var-ext:id)
                              (#%plain-lambda () var-int:unit-int-rep)) ...)
    
    #:with name #'sig-id
@@ -93,11 +93,17 @@
 
 (define-syntax-class signature-index-table
   #:literal-sets (kernel-literals)
-  #:literals (void list cons)
+  #:literals (void list cons values)
   (pattern
-   (let-values ([() (#%plain-app void import:index-row ...)]
-                [() (#%plain-app void export:index-row ...)]
-                [() (#%plain-app void (quote-syntax init-depend:id) ...)])
+   (let-values ([() (#%expression
+                     (begin (#%plain-app void import:index-row ...)
+                            (#%plain-app values)))]
+                [() (#%expression
+                     (begin (#%plain-app void export:index-row ...)
+                            (#%plain-app values)))]
+                [() (#%expression
+                     (begin (#%plain-app void (quote-syntax init-depend:id) ...)
+                            (#%plain-app values)))])
      (#%plain-app void))
    #:attr imports (map get-info (syntax->list #'(import ...)))
    #:attr exports (map get-info (syntax->list #'(export ...)))
@@ -132,7 +138,7 @@
   (define sig (sig-info-name si))
   (define internal-names (sig-info-internals si))
   (define sig-types 
-    (map (lambda (s) ((compose parse-type cdr) s)) (signature->bindings sig)))
+    (map cdr (signature->bindings sig)))
   (map cons internal-names sig-types))
 
 (define (arrowize-mapping mapping)
@@ -144,7 +150,7 @@
   (define sig (sig-info-name si))
   (define external-names (sig-info-externals si))
   (define sig-types 
-    (map (lambda (s) ((compose parse-type cdr) s)) (signature->bindings sig)))
+    (map cdr (signature->bindings sig)))
   (map cons external-names sig-types))
 
 (define (lookup-type name mapping)

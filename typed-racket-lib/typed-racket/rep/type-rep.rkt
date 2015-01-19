@@ -562,9 +562,10 @@
 ;; This is not a type because signatures are not values
 (def-type Signature ([name identifier?]
                      [extends (or/c Signature? #f)]
-                     [mapping (listof (cons/x identifier? syntax?))])
+                     [mapping (listof (cons/c identifier? Type/c))])
   ;; TODO: is this correct?
-  [#:frees (lambda (f) null)])
+  [#:frees (lambda (f) null)]
+  [#:fold-rhs (*Signature name extends mapping)])
 
 ;; interp: imports is the list of imported signatures
 ;;         exports is the list of exported signatures
@@ -575,7 +576,11 @@
                 [init-depends (listof Signature?)]
                 [result Type/c])
   ;; TODO: is this correct?
-  [#:frees (lambda (f) (f result))])
+  [#:frees (lambda (f) (f result))]
+  [#:fold-rhs (*Unit imports
+                     exports
+                     init-depends
+                     (type-rec-id result))])
 
 ;; sequences
 ;; includes lists, vectors, etc

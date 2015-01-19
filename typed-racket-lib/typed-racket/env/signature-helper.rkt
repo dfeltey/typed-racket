@@ -33,7 +33,7 @@
 (define (parse-signature-binding binding-stx)
   (syntax-parse binding-stx
     [[name:id type]
-     (cons #'name #'type)]))
+     (cons #'name (parse-type #'type))]))
 
 ;; signature->bindings : identifier? -> (listof (cons/c identifier? syntax?))
 ;; GIVEN: a signature name

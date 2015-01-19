@@ -176,59 +176,7 @@
 ;; leave intact
 ;; then it just requires getting the table from the last body expr
 ;; that had the annotation property
-#;
-(define-syntax (add-tags stx)
-  (define table (or (tr:unit:annotation-property stx) null))
-  (define import-vars (or (tr:unit:sig-vars-property stx) null))
-  (printf "import-vars: ~a\n" import-vars)
-  (define (unit-expand stx)
-    (local-expand stx 
-                  (syntax-local-context) 
-                  (append (kernel-form-identifier-list)
-                          (list (quote-syntax :)))))
-  (syntax-parse stx
-    [(add-tags) #'(begin)]
-    [(add-tags f r ...)
-     (define e-stx (unit-expand #'f))
-     (syntax-parse e-stx
-       #:literals (begin define-syntaxes define-values :)
-       [(begin b ...) 
-        #'(add-tags b ... r ...)]
-       [(: name:id type)
-        ;(define test (syntax-local-value #'unit-info))
-        (define a (first import-vars))
-        ;(define intro (make-syntax-delta-introducer #'name a))
-        (printf "name: ~a\n" #'name)
-        (printf "a: ~a\n" a)
-        (printf "(free-identifier=? name a) => ~a\n" 
-                (free-identifier=? #'name 
-                                   a))
-        (when (type-table-ref table #'name)
-          (tc-error/delayed #:stx #'name 
-                            "Duplicate type annotation of ~a for ~a, previous was ~a"
-                            (syntax-e #'type)
-                            (syntax-e #'name)
-                            (syntax-e (cdr (type-table-ref table #'name)))))
-        #`(begin
-            (: name type)
-            #,(tr:unit:annotation-property #'(add-tags r ...) (cons #'name #'type)))]
-       [(define-syntaxes (name:id ...) rhs:expr)
-        #`(begin 
-            (define-syntaxes (name ...) rhs)
-            (add-tags r ...))]
-       [(define-values (name:id ...) rhs:expr)
-        #`(begin
-            (define-values (name ...)
-              #,(tr:unit:annotation-property 
-                 (tr:unit:body-expr-or-defn-property
-                  #'rhs 
-                  (syntax->list #'(name ...)))
-                 table))
-            (add-tags r ...))]
-       [_
-        #`(begin
-            #,(tr:unit:body-expr-or-defn-property e-stx 'expr)
-            (add-tags r ...))])]))
+
 
 ;; start of rewrite to use define-syntax/syntax-local-value as a 
 ;; better communication channel inside the unit macro
@@ -238,29 +186,6 @@
 ;;   1. Indexing unit imports
 ;;   2. inserting define-values names into the expression needed to type check
 ;;
-
-
-#;
-(define-syntax (tag-unit-body-expr stx)
-  (define (unit-expand stx)
-    (local-expand stx 
-                  (syntax-local-context)
-                  (append (kernel-form-identifier-list (list (quote-syntax :))))))
-  (syntax-parse stx
-    [(_ unit-type-info:id e)
-     (define exp-e (unit-expand #'e))
-     (syntax-parse exp-e
-       [(begin b ...)
-        #`(begin
-            (add-tags unit-type-info b) ...)]
-       [(define-syntaxes (name:id ...) rhs:expr)
-        #'(define-syntaxes (name ...) rhs)]
-       [(define-values (name:id ...) rhs:expr)]
-       [(: name:id type)]
-       [_]
-       
-       )]))
-
 (define-syntax (add-tags stx)
   (syntax-parse stx
     [(_) #'(begin)]
@@ -286,73 +211,6 @@
      #'(begin (add-tags e) ...)]))
 
 
-#;
-(define-syntax (add-tags stx)
-  (define last-key (gensym))
-  (syntax-parse stx
-    [(_ unit-type-info:id) #'(begin)]
-    
-    #;
-    [(_ unit-type-info:id e ... last)
-     (define ctx (syntax-local-context))
-     (define type-info (syntax-local-value #'unit-type-info))
-     #`(begin 
-         #,@(map (lambda (stx) (tag-unit-body-expr stx ctx #f)) (syntax->list #'(e ...)))
-         #,(tag-unit-body-expr #'last ctx unit-type-info))]
-    
-        
-    
-    [(_ unit-type-info:id e ... last)
-     #`(begin 
-         (tag-unit-body-expr unit-type-info e) ...
-         (finalize-typed-unit unit-type-info last))]
-    
-    #;
-    [(add-tags) #'(begin)]
-    #;
-    [(add-tags f r ...)
-     (define e-stx (unit-expand #'f))
-     (syntax-parse e-stx
-       #:literals (begin define-syntaxes define-values :)
-       [(begin b ...) 
-        #'(add-tags b ... r ...)]
-       [(: name:id type)
-        ;(define test (syntax-local-value #'unit-info))
-        (define a (first import-vars))
-        ;(define intro (make-syntax-delta-introducer #'name a))
-        (printf "name: ~a\n" #'name)
-        (printf "a: ~a\n" a)
-        (printf "(free-identifier=? name a) => ~a\n" 
-                (free-identifier=? #'name 
-                                   a))
-        (when (type-table-ref table #'name)
-          (tc-error/delayed #:stx #'name 
-                            "Duplicate type annotation of ~a for ~a, previous was ~a"
-                            (syntax-e #'type)
-                            (syntax-e #'name)
-                            (syntax-e (cdr (type-table-ref table #'name)))))
-        #`(begin
-            (: name type)
-            #,(tr:unit:annotation-property #'(add-tags r ...) (cons #'name #'type)))]
-       [(define-syntaxes (name:id ...) rhs:expr)
-        #`(begin 
-            (define-syntaxes (name ...) rhs)
-            (add-tags r ...))]
-       [(define-values (name:id ...) rhs:expr)
-        #`(begin
-            (define-values (name ...)
-              #,(tr:unit:annotation-property 
-                 (tr:unit:body-expr-or-defn-property
-                  #'rhs 
-                  (syntax->list #'(name ...)))
-                 table))
-            (add-tags r ...))]
-       [_
-        #`(begin
-            #,(tr:unit:body-expr-or-defn-property e-stx 'expr)
-            (add-tags r ...))])]))
-
-
 ;; This table implementation is going to break when only/except are allowed in
 ;; typed units, the indexing strategy won't work in that case
 (define-for-syntax (make-signature-local-table imports exports init-depends)
@@ -361,9 +219,15 @@
       #`(list (quote-syntax #,sig-id) (cons (quote-syntax sig-var) (lambda () sig-var)) ...)))
   (tr:unit:index-table-property
    (with-syntax ([(init-depend ...) (syntax->list init-depends)])
-     #`(let-values ([() (void #,@(map make-index-row (syntax->list imports)))]
-                    [() (void #,@(map make-index-row (syntax->list exports)))]
-                    [() (void (quote-syntax init-depend) ...)])
+     #`(let-values ([() (#%expression
+                         (begin (void #,@(map make-index-row (syntax->list imports)))
+                                (values)))]
+                    [() (#%expression
+                         (begin  (void #,@(map make-index-row (syntax->list exports)))
+                                 (values)))]
+                    [() (#%expression
+                         (begin  (void (quote-syntax init-depend) ...)
+                                 (values)))])
          (void)))
    #t))
 

@@ -47,7 +47,19 @@
          (:-internal var:id t))
         (#%plain-app values))))
    #:attr name #'var
-   #:attr type (parse-type #'t)))
+   #:attr type (parse-type #'t)
+   ;; Needed to substiture the internal renaming of exported definitions
+   ;; in unit bodies in order to ensure that the annotation is applied
+   ;; to the correct identifier
+   #:attr letrec-form #`(begin
+                          (quote-syntax
+                           (:-internal var t))
+                          (#%plain-app values))
+   #:attr subst-annotation (lambda (id)
+                             #`(begin
+                                 (quote-syntax
+                                  (:-internal #,id t))
+                                 (#%plain-app values)))))
 
 (define-syntax-class unit-body-definition
   #:literal-sets (kernel-literals)
@@ -57,8 +69,34 @@
     (begin
       (#%plain-app void var:id ...)
       e))
-   #:attr vars (syntax->list #'(var ...))
-   #:with body #'e))
+   #:with vars #'(var ...)
+   #:with body #'e
+   #:attr letrec-form #'e))
+
+
+(define (process-ann/def-for-letrec ann/defs export-mapping import-mapping)
+  (define import-names (map car import-mapping))
+  (for/fold ([names #`()]
+             [exprs #`()])
+            ([a/d (in-list ann/defs)])
+    (syntax-parse a/d
+      [a:unit-body-annotation
+       (define name (attribute a.name))
+       ;; TODO:
+       ;; Duplicate annotations from imports
+       ;; are not currently detected due to a bug
+       ;; in tc/letrec-values
+       #;
+       (when (member name import-names free-identifier=?))
+       (define form ((attribute a.subst-annotation) 
+                     (or (lookup-type name export-mapping)
+                          name)))
+       (values #`(#,@names ())  
+               #`(#,@exprs #,form))]
+      [d:unit-body-definition
+       (values #`(#,@names d.vars) #`(#,@exprs d.body))])))
+
+
 
 (struct sig-info (name externals internals) #:transparent)
 ;; A Sig-Info is a (sig-info identifier? (listof identifier?) (listof identifier?))
@@ -154,7 +192,10 @@
   (map cons external-names sig-types))
 
 (define (lookup-type name mapping)
+  (printf "lt:name: ~a\n" name)
+  (printf "lt:mapping: ~a\n" mapping)
   (let ([v (assoc name mapping free-identifier=?)])
+    (printf "lt:v: ~a\n" v)
     (and v (cdr v))))
 
 
@@ -170,7 +211,152 @@
      (ret (parse-and-check form unit-type))]
     [_ (ret (parse-and-check form #f))]))
 
+;; NEW 
+
 (define (parse-and-check form expected)
+  (syntax-parse form
+    [u:unit-expansion
+     (define body-stx #'u.body-stx)
+     ;; handle signature table information
+     (define unit-index-table 
+       (first (trawl-for-property body-stx tr:unit:index-table-property)))
+     (define-values (imports-info exports-info init-depends)
+       (parse-index-table unit-index-table))
+     
+     ;; Get Signatures to build Unit type
+     (define import-signatures (map lookup-signature (map sig-info-name imports-info)))
+     (define export-signatures (map lookup-signature (map sig-info-name exports-info)))
+     (define init-depend-signatures (map lookup-signature init-depends))
+     
+     (printf "import-signatures: ~a\nexport-signatures: ~a\ninit-depends-signatures: ~a\n"
+             import-signatures
+             export-signatures
+             init-depend-signatures)
+     
+     
+     (define local-sig-type-map
+       (apply append (map make-local-type-mapping imports-info)))
+     (define signature-annotations
+       (arrowize-mapping local-sig-type-map))
+     
+     (printf "signature-annotations: ~a\n" signature-annotations)
+     
+     (define import-name-map
+       (apply append (map
+                      (lambda (si) (map cons (sig-info-externals si) (sig-info-internals si)))
+                      imports-info)))
+     (define export-name-map
+       (apply append (map 
+                      (lambda (si) (map cons (sig-info-externals si) (sig-info-internals si))) 
+                      exports-info)))
+     
+          
+     ;; extract unit body forms
+     (define body-forms 
+       (trawl-for-property body-stx tr:unit:body-exp-def-type-property))
+     
+     ;; get last expression in the body
+     (define last-form 
+       (or (and (not (empty? body-forms)) (last body-forms))))
+     
+     ;; get expression forms, if the body was empty or ended with
+     ;; a definition insert a `(void)` expression to be typechecked
+     (define expression-forms
+       (let ([exprs 
+              (filter
+               (lambda (stx) (eq? (tr:unit:body-exp-def-type-property stx) 'expr))
+               body-forms)])
+         (cond
+          [(not last-form) (append exprs (list #'(#%plain-app void)))]
+          [(eq? (tr:unit:body-exp-def-type-property last-form) 'def/type)
+           (append exprs (list #'(#%plain-app void)))]
+          [else exprs])))
+     
+     ;; get the definitions/annotations in the body
+     (define  annotation/definition-forms
+       (filter
+        (lambda (stx) (eq? (tr:unit:body-exp-def-type-property stx) 'def/type))
+        body-forms))
+     
+     (define-values (ann/def-names ann/def-exprs)
+       (process-ann/def-for-letrec annotation/definition-forms 
+                                   export-name-map 
+                                   import-name-map))
+
+     (printf "ann/def-names: ~a\n" ann/def-names)
+     (printf "ann/def-exprs: ~a\n" ann/def-exprs)
+     ;; split up the annotations and definitions
+      
+      
+      ;; process annotations, combine with import/export signatures
+      
+      
+     #| 
+      (define local-imports-type-map
+        (apply append (map make-local-type-mapping imports-info)))
+      (define import-signature-annotations
+        (arrowize-mapping local-imports-type-map))
+      |#
+      
+      
+      
+      
+      (printf "body-forms: ~a\n" body-forms)
+      
+      
+      
+      
+      
+                                        
+      ;; FIXME
+      
+      (printf "expression forms: ~a\n" expression-forms)
+      (define unit-type
+        (with-lexical-env/extend-types 
+          (map car signature-annotations)
+          (map cdr signature-annotations)
+          (define res (tc/letrec-values ann/def-names ann/def-exprs #`(#,@expression-forms)))
+          
+          (printf "res: ~a\n" res)
+          
+          
+          (printf "annotation/definition-forms: ~a\n" annotation/definition-forms)
+          (define annotations (filter unit-type-annotation? annotation/definition-forms))
+          (define definitions 
+            (map process-unit-body-definition
+                 (filter-not unit-type-annotation? annotation/definition-forms)))
+          (printf "annotations: ~a\n" annotations)
+          (printf "definitions: ~a\n" definitions)
+          (define defined-vars (apply append (map car definitions)))
+          
+          
+          
+          ;; TODO:
+          ;; 1. add types from `import` signatures to the environment
+          ;; 2. process annotations/add to lexical environment
+          ;; 3. infer types from definitions 
+          ;; 4. type check definitions
+          ;; 5. type check expressions
+          ;; 6. determine `invoke` type
+          ;; 7. correctly handle subtyping with exports
+          #;
+          (define result-type
+            (match res
+              []
+                ))
+          
+          
+          (make-Unit import-signatures 
+                     export-signatures
+                     init-depend-signatures 
+                     (-values (tc-results-ts res))
+                     #;
+                     (match res
+                       [(tc-result1: t) t]))))
+      unit-type]))
+
+#;
+(define (parse-and-check.Old form expected)
   (syntax-parse form
     [u:unit-expansion
      (define body-stx #'u.body-stx)
@@ -193,6 +379,11 @@
      (define export-internal-type-map
        (apply append (map make-local-type-mapping exports-info)))
      
+     (define export-external-type-map
+       (apply append (map make-external-type-mapping exports-info)))
+     
+     (printf "export-external anotations: ~a\n" export-external-type-map)
+     
      (printf "export-annotations: ~a\n" export-internal-type-map)
      
      (printf "local-sig-type-map: ~a\n" local-sig-type-map)
@@ -202,7 +393,15 @@
      (define annotations (filter unit-type-annotation? forms))
      (define forms-to-check (filter-not unit-type-annotation? forms))
      (printf "annotations: ~a\n" annotations)
-     (define signature-names (apply append (map sig-info-externals imports-info)))
+     (define import-signature-names (apply append (map sig-info-externals imports-info)))
+     (define export-signature-names (apply append (map sig-info-externals exports-info)))
+     
+     ;; map external export name to internal export names
+     (define export-name-map
+       (apply append (map 
+                      (lambda (si) (map cons (sig-info-externals si) (sig-info-internals si))) 
+                      exports-info)))
+     
      (define annotation-map
        (for/fold ([mapping '()])
                  ([form (in-list annotations)])
@@ -213,8 +412,26 @@
             (printf "name: ~a\n" name)
             (printf "type: ~a\n" type)
             (cond
+             
+             [(member name export-signature-names free-identifier=?)
+              =>
+              (lambda (external-name-list)
+                (define name (car external-name-list))
+                ;; need to recover the export internal name
+                ;; TODO: lookup-type is a bad name
+                (cons (cons (lookup-type name export-name-map) type)
+                      mapping))]
              [(or (member name (map car mapping) free-identifier=?)
-                  (member name signature-names free-identifier=?))
+                  (member name import-signature-names free-identifier=?)
+                  ;; This check is wrong
+                  ;; It should not be a type error for there to be an 
+                  ;; annotation that is also present in an exported
+                  ;; signature, but the name needs to be remapped to
+                  ;; the correct name in order to give the correct
+                  ;; annotation in the unit body
+                  #;
+                  (member name export-signature-names free-identifier=?))
+              (printf "made it here\n")
               (tc-error/delayed #:stx name 
                                 "Duplicate type annotation of ~a for ~a, previous was ~a"
                                 type 
@@ -223,10 +440,13 @@
                                 ;; or from the signature depening on where the id
                                 ;; came from
                                 (or (lookup-type name mapping)
+                                    (lookup-type name export-external-type-map)
                                     (lookup-type name external-sig-type-map)))
               mapping]
              [else (cons (cons name type) mapping)])])))
+     
      (define all-annotations (append annotation-map signature-annotations))
+     (printf "all annotations: ~a\n" all-annotations)
      (printf "Univ: ~a\n" Univ)
      (define body-type
        (with-lexical-env/extend-types 
@@ -242,18 +462,37 @@
                  (define body-result (tc-expr body))
                  (define body-types (tc-results-ts body-result))
                  (printf "vars: ~a\n" vars)
-                 (printf "body-def: ~a\n" body-types)
+                 
+                 ;; --------
+                 #|
+                 (define x (first vars))
+                 (printf "x: ~a\n" x)
+                 (define x-ann (car (first all-annotations)))
+                 (printf "x-ann: ~a\n" x-ann)
+                 (printf " x =?= x-ann??: ~a\n"
+                         (free-identifier=? x x-ann))
+                 |#
+                 ;; --------
+                 
+                 
+                 (printf "body-types: ~a\n" (-values body-types))
                  
                  ;; map identifiers to types using local and exported signature bindings
                  (printf "vars: ~a\n" vars)
                  
                  (define var-types
-                   (-values 
-                    (map (lambda (id) (or (lookup-type id all-annotations)
-                                     (lookup-type id export-internal-type-map)
-                                     Univ))
-                         vars)))
+                   (map (lambda (id) (or (lookup-type id all-annotations)
+                                    #;(lookup-type id export-internal-type-map)
+                                    Univ))
+                        vars))
                  (printf "var-types: ~a\n" var-types)
+                 ;(printf "(ret var-types) : ~a\n" (ret var-types))
+                 
+                 ;; check subtyping here ?
+                 
+                 #;
+                 (check-below body-result 
+                              (ret var-types))
                  
                  #f
                  ])
@@ -270,7 +509,7 @@
      
      (void)
      ])
-  (make-Unit null null null -Void)
+  (-unit null null null -Void)
   )
 
 (define (unit-type-annotation? stx)
@@ -287,9 +526,18 @@
     [d:unit-body-definition
      (values (attribute d.vars) #'d.body)]))
 
+;; process-unit-body-definition :: Syntax -> (Pairof (Listof Identifier) Syntax)
+;; GIVEN: the tagged syntax for a unit body definition
+;; RETURNS: a list of pairs of the variables being defined
+;;          and the syntax of the body expression
+(define (process-unit-body-definition stx)
+  (syntax-parse stx
+    [d:unit-body-definition
+     (cons (attribute d.vars) #'d.body)]))
+
 
 ;; Syntax Option<Type> -> Type
-#;
+#|
 (define (parse-and-check form expected)
   (syntax-parse form
     [u:unit-expansion
@@ -426,6 +674,7 @@
      (define unit-type (or body-type -Void))
      (make-Unit imports exports init-depends unit-type)
      ]))
+|#
 
 (define (ann->dict stxs)
   (for/list ([stx stxs])
@@ -480,6 +729,7 @@
           ;; would be nice to make this an arrow type
           ;; and parse it here instead of above ...
           (cdr (assoc val m2 free-identifier=?)))))
+
 
 
 ;; copied from check-class-unit.rkt

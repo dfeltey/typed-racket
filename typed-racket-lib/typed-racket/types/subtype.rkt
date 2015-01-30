@@ -688,8 +688,15 @@
                    (and (not init-rest) (not init-rest*))))]
                (sub init-rest init-rest*))]
          [((Unit: imports exports init-depends t) (Unit: imports* exports* init-depends* t*))
-          (and (check-sub-signatures? imports* imports)
-               (check-sub-signatures? exports exports*)
+          (printf "debugging\n")
+          (printf "~a ~a\n" t t*)
+          (printf "~a\n" (subtype* A0 t t*))
+          (subtype-seq A0
+                       (subtype* t t*))
+          ;(subtype* A0 t t*)
+          #;
+          (and ;(check-sub-signatures? imports* imports)
+               ;(check-sub-signatures? exports exports*)
                ;; checking the init-depends should be unnecessary
                ;; Racket should ensure they are valid subsets of imports
                ;; and the signature subsumption should be automatic

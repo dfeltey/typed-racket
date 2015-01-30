@@ -83,5 +83,13 @@
   (tr:unit:annotation tr:unit:annotation)
   (tr:unit:sig-vars tr:unit:sig-vars)
   (tr:unit:annotated tr:unit:annotated)
+  ;; invoke properties
+  (tr:unit:invoke tr:unit:invoke #:mark)
+  (tr:unit:invoke:expr tr:unit:invoke:expr)
+  ;; Temporary
+  (tr:unit:definition tr:unit:definition)
+  ;; need to recover a (void) for typechecking units
+  (tr:unit:void tr:unit:void)
+  
   )
 

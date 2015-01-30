@@ -2,7 +2,7 @@
 
 ;; Primitive forms for units/signatures
 
-(provide define-signature unit)
+(provide define-signature unit invoke-unit)
 
 
 (require  "../utils/utils.rkt"
@@ -28,10 +28,13 @@
           (only-in racket/unit 
                    [define-signature untyped-define-signature] 
                    [unit untyped-unit]
+                   [invoke-unit untyped-invoke-unit]
+                   [compound-unit untyped-compound-unit]
                    extends
                    import
                    export
-                   init-depend)
+                   init-depend
+                   link)
           "../typecheck/internal-forms.rkt"
           (for-label "colon.rkt")
           (for-template (rep type-rep)))
@@ -186,6 +189,12 @@
 ;;   1. Indexing unit imports
 ;;   2. inserting define-values names into the expression needed to type check
 ;;
+
+
+
+
+
+;; This is the working version use this!!!
 (define-syntax (add-tags stx)
   (syntax-parse stx
     [(_) #'(begin)]
@@ -265,7 +274,35 @@
                           #,(make-signature-local-table #'(import-sig ...)
                                                         #'(export-sig ...)
                                                         #'init-depends.names)
+                          #,(tr:unit:void-property #'(void) #t)
                           (add-tags e ...)))))]))
+
+
+;; invoke-unit macro
+(begin-for-syntax 
+  (define-splicing-syntax-class invoke-imports
+    #:literals (import)
+    (pattern (~seq)
+             #:attr untyped-import #'()
+             #:with imports #'())
+    (pattern (import sig:id ...)
+             #:attr untyped-import #'((import sig ...))
+             #:with imports #'((quote-syntax sig) ...))))
+
+(define-syntax (invoke-unit stx)
+  (syntax-parse stx
+    [(invoke-unit unit-expr imports:invoke-imports)
+     (ignore
+      (tr:unit:invoke
+       (quasisyntax/loc stx
+         (untyped-invoke-unit
+          #,(tr:unit:invoke:expr-property 
+             #`(#%expression
+                (begin
+                  (void #,@#'imports.imports)
+                  unit-expr)) 
+             #t)
+          #,@(attribute imports.untyped-import)))))]))
 
 
 

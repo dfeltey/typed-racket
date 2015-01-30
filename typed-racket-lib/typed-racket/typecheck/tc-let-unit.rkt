@@ -100,6 +100,9 @@
     [_ (tc-expr e)]))
 
 (define (tc/letrec-values namess exprs body [expected #f])
+  (printf "namess: ~a\n" namess)
+  (printf "exprs: ~a\n" exprs)
+  (printf "letrec-values body: ~a\n" body)
   (let* ([names (stx-map syntax->list namess)]
          [orig-flat-names (apply append names)]
          [exprs (syntax->list exprs)])

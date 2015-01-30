@@ -574,7 +574,7 @@
 (def-type Unit ([imports (listof Signature?)]
                 [exports (listof Signature?)]
                 [init-depends (listof Signature?)]
-                [result Type/c])
+                [result SomeValues/c])
   ;; TODO: is this correct?
   [#:frees (lambda (f) (f result))]
   [#:fold-rhs (*Unit imports

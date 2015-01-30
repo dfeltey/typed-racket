@@ -381,7 +381,7 @@
        (make-Unit (map id->sig (syntax->list #'(import ...)))
                   (map id->sig (syntax->list #'(export ...)))
                   (map id->sig (syntax->list #'(init-depend ...)))
-                  (parse-type #'result))]
+                  (parse-values-type #'result))]
       
       [(:List^ ts ...)
        (parse-list-type stx)]

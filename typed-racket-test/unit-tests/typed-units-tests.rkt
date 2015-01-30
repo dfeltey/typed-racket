@@ -31,10 +31,12 @@
 (define tests
   (test-suite
    "unit typechecking tests"
-   ;; this one "passes" for the wrong reason I think
    
+   
+   ;; I want to write this, but this doesn't actually work
    [tc-err
-    (let ()
+    (module Test typed/racket/base
+      (require typed/racket/unit)
       (define-signature x^ ([x : String]))
       (unit (import x^) (export)
         (: y Integer)

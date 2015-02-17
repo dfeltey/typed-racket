@@ -661,7 +661,9 @@
                   (void (quote-syntax lb.sig-id) ...)
                   (void (quote-syntax lb.link-id) ...)
                   (void (quote-syntax link-id) ...)
-                  (void (quote-syntax unit-id) (lambda () unit-id)))))
+                  (void (quote-syntax unit-id)
+                        #;(lambda () unit-id)
+                        ))))
     (pattern unit-id:expr
              #:with bound-link-ids #'()
              #:with bound-sig-ids #'()
@@ -673,7 +675,9 @@
                   (void)
                   (void)
                   (void)
-                  (void (quote-syntax unit-id) (lambda () unit-id)))))))
+                  (void (quote-syntax unit-id) 
+                        #;(lambda () unit-id)
+                        ))))))
 
 ;; NOTE/TODO:
 ;; - it seems that the docs for compound-unit/infer

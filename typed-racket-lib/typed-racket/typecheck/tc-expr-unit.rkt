@@ -123,8 +123,16 @@
       ;; a TR-annotated class
       [stx:tr:class^
        (check-class form expected)]
+      ;; Unit forms
       [stx:tr:unit^
        (check-unit form expected)]
+      [stx:tr:unit:invoke^
+       (check-invoke-unit form expected)]
+      [stx:tr:unit:compound^
+       (check-compound-unit form expected)]
+      ;; Is this the right thing to do for define-values/invoke-unit?
+      [stx:tr:unit:def-val/inv-unit^
+       (check-define-values/invoke-unit form expected)]
       [stx:exn-handlers^
        (register-ignored! form)
        (check-subforms/with-handlers form expected) ]

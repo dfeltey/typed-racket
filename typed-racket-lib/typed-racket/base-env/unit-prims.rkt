@@ -2,11 +2,13 @@
 
 ;; Primitive forms for units/signatures
 
-(provide define-signature
+(provide ;define-signature
          unit 
          define-unit
          compound-unit 
-         ;define-compound-unit
+         define-compound-unit
+         compound-unit/infer
+         define-compound-unit/infer
          invoke-unit
          define-values/invoke-unit)
 
@@ -23,7 +25,7 @@
                       syntax/kerncase
                       "../private/syntax-properties.rkt"
                      ; (private parse-type)
-                     ; (rep type-rep)
+                     ;(rep type-rep)
                      ; (env signature-helper)
                       syntax/id-table
                       racket/dict
@@ -39,6 +41,8 @@
                    [define-unit untyped-define-unit]
                    [define-compound-unit untyped-define-compound-unit]
                    [define-values/invoke-unit untyped-define-values/invoke-unit]
+                   [compound-unit/infer untyped-compound-unit/infer]
+                   [define-compound-unit/infer untyped-define-compound-unit/infer]
                    extends
                    import
                    export
@@ -46,6 +50,8 @@
                    link
                    prefix)
           "../typecheck/internal-forms.rkt"
+          "base-types.rkt"
+          "base-types-extra.rkt"
           (for-label "colon.rkt")
           (for-template (rep type-rep)))
 
@@ -127,7 +133,8 @@
       (signature-members sig-id sig-id))
 
     (map
-     (unitify-id sig-id)
+     ;(unitify-id sig-id)
+     syntax-local-introduce
      vars))
   
   ;; No idea what this does
@@ -185,15 +192,23 @@
 
 ;; Abstraction for creating trampolining macros
 (begin-for-syntax
-  (define-syntax-class (begin-form name)
+  (define-syntax-class (begin-form name [arg #'()])
     #:literals (begin)
     (pattern (begin e ...)
              #:with trampoline-form
-             #`(#,name e ...)))
+             #`(#,name #,@arg e ...)))
   (define-syntax-class (name-form name)
     (pattern (_ e ...)
              #:with trampoline-form
-             #`(begin (#,name e) ...))))
+             #`(begin (#,name e) ...)))
+  (define-splicing-syntax-class (rest-form name arg)
+    (pattern (~seq) 
+             #:with trampoline-form
+             #`(begin))
+    (pattern (~seq e1 e2 ...)
+             #:with trampoline-form
+             #`(begin (#,name #,@arg e1)
+                      (#,name #,@arg e2) ...))))
 
 (define-syntax (define-trampolining-macro stx)
   (syntax-parse stx
@@ -204,31 +219,35 @@
            [(name e) 
             (define exp-e 
               (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
-            (printf "EXPANDED: ~a\n" exp-e)
             (syntax-parse exp-e
               #:literal-sets (kernel-literals)
               [(~var b (begin-form #'name))
                #'b.trampoline-form]
-              case 
-              ...
+              case ...
               [_ exp-e])]
            [(~var e (name-form #'name))
-            #'e.trampoline-form]))]))
+            #'e.trampoline-form]))]
+    [(_ (name:id arg ...) case ...)
+     #`(define-syntax (name stx)
+         (syntax-parse stx
+           [(_ arg ...) #'(begin)]
+           [(name arg ... e) 
+            (define exp-e 
+              (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
+            (syntax-parse exp-e
+              #:literal-sets (kernel-literals)
+              [(~var b (begin-form #'name #`(arg ...)))
+               #'b.trampoline-form]
+              case ...
+              [_ exp-e])]
+           [(_ arg ... (~var exprs (rest-form #'name #`(arg ...))))
+            #'exprs.trampoline-form]))]))
 
     
    
 
 
-(define-syntax (define-signature stx)
-  (syntax-parse stx
-    [(_ sig-name:id super-form:extends-form (form:def-sig-form ...))
-     #`(begin
-         #,(ignore (quasisyntax/loc stx
-                     (untyped-define-signature sig-name #,@(attribute super-form.form)
-                                               (form.erased ...))))
-         #,(internal (quasisyntax/loc stx
-                       (define-signature-internal sig-name super-form.internal-form
-                         (form.internal-form ...)))))]))
+
 
 ;; Typed macro for define-values/invoke-unit
 ;; This has to be handled specially because they types of
@@ -241,33 +260,34 @@
     [(_ unit-expr
         (import isig:id ...)
         (export esig:id ...))
-     #`(begin
-         #,(internal (quasisyntax/loc stx
-                       (define-values/invoke-unit-internal
-                         (isig ...)
-                         (esig ...))))
-         #,(ignore 
-            (tr:unit:def-val/inv-unit
-             (quasisyntax/loc stx
-               (untyped-define-values/invoke-unit 
-                #,(tr:unit:def-val/inv-unit-expr-property 
-                   #`(#%expression
-                      (begin 
-                        (void (quote-syntax isig) ...)
-                        (void (quote-syntax esig) ...)
-                        unit-expr)) #t)
-                (import isig ...)
-                (export esig ...))))))]))
+     (with-syntax ([(temp) (generate-temporaries #'(temp))])
+         #`(begin
+             #,(internal (quasisyntax/loc stx
+                           (define-values/invoke-unit-internal
+                             (isig ...)
+                             (esig ...))))
+             (: temp (Unit (import isig ...)
+                           (export esig ...)
+                           ;; FIXME this needs to be AnyValues
+                           Any))
+             (define temp unit-expr)
+             
+             #,(ignore (quasisyntax/loc stx
+                         (untyped-define-values/invoke-unit temp
+                                                            (import isig ...)
+                                                            (export esig ...))))))]))
 
+;; Maybe the define-trampolining-macro should allow parameters
+;; this would make handling a lot of forms much simpler
 #;
-(define-syntax (process-define-values/invoke-unit stx)
-  (syntax-parse stx
-    [(_) #'(begin)]
-    [(_ e ...) 
-     #'(begin (process-define-values))]
-    
-    )
-  )
+(define-trampolining-macro process-define-values/invoke-unit
+  [(define-values (name:id ...) rhs)
+   #`(define-values (name ...)
+       #,(ignore 
+          (tr:unit:def-val/inv-unit
+           (quasisyntax/loc #'rhs rhs))))])
+
+
 
 
 
@@ -306,7 +326,8 @@
              (begin
                (void (lambda () name) ...)
                rhs))
-          'def/type))])
+          'def/type))]
+  [e (tr:unit:body-exp-def-type-property #'e 'expr)])
 
 #;
 (define-syntax (add-tags stx)
@@ -470,17 +491,19 @@
                           links:compound-links))
      #:attr untyped-stx
      (ignore
-      (tr:unit:compound
+      (tr:unit:compound-property
        (quasisyntax/loc #'stx
          (#%expression
           (begin
             (void #,@#'imports.import-link-ids #,@(attribute links.bound-link-ids))
             (void #,@#'imports.import-sig-ids #,@(attribute links.bound-sig-ids))
-            (void #,@#'imports.import-sig-ids)
+            (void #,@#'imports.import-link-ids)
             exports.export-link-ids
+            (void)
             (untyped-compound-unit imports
                                    exports
-                                   links.untyped-links))))))))
+                                   links.untyped-links))))
+       #t))))
   (define-syntax-class compound-imports
     #:literals (import)
     (pattern (import lb:link-binding ...)
@@ -517,6 +540,7 @@
                    #`(#%expression
                       (begin
                         (void (quote-syntax lb.sig-id) ...)
+                        (void (quote-syntax lb.link-id) ...)
                         (void (quote-syntax link-id) ...)
                         unit-expr)) 
                    #t)
@@ -536,6 +560,184 @@
   (syntax-parse stx
     [cu:compound-unit-form
      (attribute cu.untyped-stx)]))
+
+(define-trampolining-macro (process-define-compound-unit links sigs im ex infer)
+  [(define-values (name:id ...) rhs)
+   #`(define-values (name ...)
+       #,(ignore
+          (tr:unit:compound-property
+           #`(#%expression
+              (begin
+                links
+                sigs
+                im
+                ex
+                infer
+                rhs))
+           #t)))])
+
+
+(define-syntax (define-compound-unit stx)
+  (syntax-parse stx
+    [(_ uid 
+        imports:compound-imports
+        exports:compound-exports
+        links:compound-links)
+     (quasisyntax/loc stx
+       (process-define-compound-unit
+        (void #,@#'imports.import-link-ids #,@(attribute links.bound-link-ids))
+        (void #,@#'imports.import-sig-ids #,@(attribute links.bound-sig-ids))
+        (void #,@#'imports.import-link-ids)
+        (void)
+        exports.export-link-ids
+        (untyped-define-compound-unit uid
+                                      imports
+                                      exports
+                                      links.untyped-links)))]))
+
+;; compound-unit/infer
+
+(begin-for-syntax
+  (define-syntax-class compound-infer-imports
+    #:literals (import)
+    (pattern (import im:infer-link-import ...)
+             #:with import-link-ids
+             #'(im.link-qs ...)
+             #:with import-sig-ids
+             #'(im.sig-qs ...)))
+  
+  (define-syntax-class compound-infer-exports
+    #:literals (export)
+    (pattern (export ex:infer-link-export ...)
+             #:with export-links-or-sigs
+             #'(void (quote-syntax ex.link-or-sig-id) ...)))
+  
+  (define-syntax-class compound-infer-links
+    #:literals (link)
+    (pattern (link lnk:infer-linkage-decl ...)
+             ;; #:with untyped-links
+             ;; #'(link lnk.untyped-link-decl ...)
+             #:attr bound-link-ids (apply append (map syntax->list 
+                                                      (syntax->list 
+                                                       #'(lnk.bound-link-ids ...))))
+             #:attr bound-sig-ids (apply append (map syntax->list
+                                                     (syntax->list
+                                                      #'(lnk.bound-sig-ids ...))))
+             
+             #:with links-untyped 
+             #'(link lnk.linkage-stx ...)
+             #:attr link-table
+             #`(void lnk.linkage-information ...)))
+  
+  (define-syntax-class infer-link-import
+    (pattern sig-id:id
+             #:with sig-qs #'(quote-syntax sig-id)
+             #:with link-qs #`(quote-syntax #,(generate-temporary)))
+    (pattern (link-id:id : sig-id:id)
+             #:with link-qs #'(quote-syntax link-id)
+             #:with sig-qs #'(quote-syntax sig-id)))
+  
+  (define-syntax-class infer-link-export
+    (pattern link-or-sig-id:id))
+  
+  ;; allowing the unit-id below to be exprs
+  ;; so that the untyped macro can give better error
+  ;; reporting
+  (define-syntax-class infer-linkage-decl
+    (pattern ((lb:link-binding ...)
+              unit-id:expr
+              link-id:id ...)
+             #:with bound-link-ids #'(lb.link-qs ...)
+             #:with bound-sig-ids #'(lb.sig-qs ...)
+             #:with linkage-stx
+             #`((lb ...)
+                #,(tr:unit:compound:expr-property
+                   #'unit-id
+                   'infer)
+                link-id ...)
+             #:with linkage-information
+             #`(#%expression
+                (begin
+                  (void (quote-syntax lb.sig-id) ...)
+                  (void (quote-syntax lb.link-id) ...)
+                  (void (quote-syntax link-id) ...)
+                  (void (quote-syntax unit-id) (lambda () unit-id)))))
+    (pattern unit-id:expr
+             #:with bound-link-ids #'()
+             #:with bound-sig-ids #'()
+             #:with linkage-stx
+             (tr:unit:compound:expr-property #'unit-id 'infer)
+             #:with linkage-information
+             #`(#%expression
+                (begin
+                  (void)
+                  (void)
+                  (void)
+                  (void (quote-syntax unit-id) (lambda () unit-id)))))))
+
+;; NOTE/TODO:
+;; - it seems that the docs for compound-unit/infer
+;;   suggest that imports are filled in from the 
+;;   static information bound to the unit-ids
+;;   but simple tests don't seem to confirm this
+
+(define-syntax (compound-unit/infer stx)
+  (syntax-parse stx
+    [(_ 
+      imports:compound-infer-imports
+      exports:compound-infer-exports
+      links:compound-infer-links)
+     (ignore
+      (tr:unit:compound-property
+       (quasisyntax/loc stx
+         (#%expression
+          (begin
+            (void #,@#'imports.import-link-ids
+                  #,@(attribute links.bound-link-ids))
+            (void #,@#'imports.import-sig-ids
+                  #,@(attribute links.bound-sig-ids))
+            (void #,@#'imports.import-link-ids) 
+            exports.export-links-or-sigs
+            #,(attribute links.link-table)
+            ;; NOTE:
+            ;;  No reason to alter the syntax at all
+            ;;  since nothing seems recoverable from the
+            ;;  expansion
+            (untyped-compound-unit/infer
+             imports
+             exports 
+             links))))
+       'infer))]))
+
+
+;; This doesn't work because I can't figure out how to
+;; get the identifiers to which the units are bound 
+;; after expansion is finished
+
+(define-syntax (define-compound-unit/infer stx)
+  (syntax-parse stx
+    [(_ unit-name:id
+        imports:compound-infer-imports
+        exports:compound-infer-exports
+        links:compound-infer-links)
+     (quasisyntax/loc stx
+       (process-define-compound-unit
+        
+        (void #,@#'imports.import-link-ids
+              #,@(attribute links.bound-link-ids))
+        
+        (void #,@#'imports.import-sig-ids
+              #,@(attribute links.bound-sig-ids))
+        (void #,@#'imports.import-link-ids) 
+        exports.export-links-or-sigs
+        
+        #,(attribute links.link-table)
+        
+        
+        (untyped-define-compound-unit/infer unit-name
+                                            imports
+                                            exports
+                                            links)))]))
 
 
 

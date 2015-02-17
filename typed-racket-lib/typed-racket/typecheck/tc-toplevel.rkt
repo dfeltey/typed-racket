@@ -14,7 +14,8 @@
          "provide-handling.rkt" "def-binding.rkt" "tc-structs.rkt"
          "typechecker.rkt" "internal-forms.rkt"
          (typecheck provide-handling def-binding tc-structs
-                    typechecker internal-forms)
+                    typechecker internal-forms 
+                    check-below)
          syntax/location
          racket/format
          (for-template
@@ -113,6 +114,15 @@
       [(define-values (lifted) expr)
        #:when (contract-lifted-property #'expr)
        (list)]
+      
+      ;; handle top-level define-values/invoke-unit
+      [dviu:typed-define-values/invoke-unit
+       (define export-signatures (syntax->list #'(dviu.esig ...)))
+       (define exports-type-mapping (signatures->bindings export-signatures))
+       (for ([(id ty) (in-dict exports-type-mapping)])
+         (register-type-if-undefined id ty))
+       ;; FIXME: should these definitions be added to this list?
+       (list)]
 
       ;; values definitions
       [(define-values (var ...) expr)
@@ -128,6 +138,7 @@
           (define top-level? (eq? (syntax-local-context) 'top-level))
           (for ([var (in-list vars)])
             (when (dict-has-key? unann-defs var)
+              ;; (printf "in here: ~a\n" #'(v ...))
               (free-id-table-remove! unann-defs var))
             (finish-register-type var top-level?))
           (stx-map make-def-binding #'(v ...) (attribute v.type))]
@@ -210,7 +221,18 @@
        (tc-expr #'stx)]
       [stx:tr:unit^
        (tc-expr #'stx)]
-
+      [stx:tr:unit:invoke^
+       (tc-expr #'stx)]
+      [stx:tr:unit:compound^
+       (tc-expr #'stx)]
+      ;; This may not make sense since define-values/invoke-unit isn't really an expression
+      [dviu:typed-define-values/invoke-unit
+       (define imports (signatures->bindings (syntax->list #'(dviu.isig ...))))
+       (printf "IMPORTS PASS 2: ~a\n" imports)
+       (for ([(id expected-type) (in-dict imports)])
+         (define lexical-type (lookup-type/lexical id))
+         (check-below lexical-type expected-type))
+       'no-type]
       ;; these forms we have been instructed to ignore
       [stx:ignore^
        'no-type]
@@ -426,6 +448,7 @@
                 #,(tname-env-init-code)
                 #,(tvariance-env-init-code)
                 #,(mvar-env-init-code mvar-env)
+                #,(signature-env-init-code)
                 #,(make-struct-table-code)
                 #,@(for/list ([a (in-list aliases)])
                      (match-define (list from to) a)

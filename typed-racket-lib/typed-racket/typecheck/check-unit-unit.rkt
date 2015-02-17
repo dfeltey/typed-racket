@@ -67,7 +67,7 @@
   (pattern
    (#%expression
     (begin
-      (#%plain-app void var:id ...)
+      (#%plain-app void (#%plain-lambda () var:id) ...)
       e))
    #:with vars #'(var ...)
    #:with body #'e
@@ -169,6 +169,81 @@
             unit-body:expr)
            #:with body-stx #'unit-body))
 
+
+;; Compound Unit syntax classes
+(define-syntax-class compound-unit-expansion
+  #:literals (#%expression #%plain-app void quote-syntax begin)
+  (pattern (#%expression
+            (begin
+              (#%plain-app void (quote-syntax link-id) ...)
+              (#%plain-app void (quote-syntax sig-id) ...)
+              (#%plain-app void (quote-syntax import-link) ...)
+              (#%plain-app void (quote-syntax export-link) ...)
+              infer-table
+              untyped-compound-unit-exp:expr))
+           #:attr link-id-mapping (map cons 
+                                    (syntax->list #'(link-id ...))
+                                    (syntax->list #'(sig-id ...)))
+           #:attr import-link-ids (syntax->list #'(import-link ...))
+           #:attr export-link-ids (syntax->list #'(export-link ...))
+           #:with compound-unit #'untyped-compound-unit-exp))
+
+(define-syntax-class compound-unit-expr
+  #:literals (#%expression #%plain-app void quote-syntax begin)
+  (pattern (#%expression
+            (begin
+              (#%plain-app void (quote-syntax export-sig:id) ...)
+              (#%plain-app void (quote-syntax export-link:id) ...)
+              (#%plain-app void (quote-syntax import-link:id) ...)
+              unit-expr:expr))
+           #:attr export-sigs (syntax->list #'(export-sig ...))
+           #:attr export-links (syntax->list #'(export-link ...))
+           #:attr import-links (syntax->list #'(import-link ...))
+           #:with expr #'unit-expr))
+
+;; parse-compound-unit : Syntax -> (Values (Listof (Cons Id Id))
+;;                                         (Listof Id)
+;;                                         (Listof Id)
+;;                                         Syntax)
+;; Returns a mapping of link-ids to sig-ids, a list of imported sig ids
+;; a list of exported link-ids
+(define (parse-compound-unit stx)
+  (syntax-parse stx
+    [cu:compound-unit-expansion
+     (define mapping (attribute cu.link-id-mapping))
+     (define link-ids (map car mapping))
+     (define export-signatures 
+       (map (lambda (id) 
+              (if (member id link-ids free-identifier=?)
+                  (lookup-type id mapping)
+                  id)) 
+            (attribute cu.export-link-ids)))
+     (define infer-table
+       (syntax-parse #'cu.infer-table
+         #:literals (#%plain-app void)
+         [(#%plain-app void) #f]
+         [e #'e]))
+     (values 
+      mapping
+      (attribute cu.import-link-ids)
+      export-signatures
+      infer-table
+      #'cu.compound-unit)]))
+
+;; parse-compound-unit-expr : Syntax -> (Values Syntax (Listof Id) (Listof Id))
+;; Given a unit expression form from ompound unit
+;; Returns an expression to typecheck, a list of imported link-ids
+;; and a list of exported sig-ids
+(define (parse-compound-unit-expr stx)
+  (syntax-parse stx
+    [cue:compound-unit-expr
+     (values
+      #'cue.expr
+      (attribute cue.import-links)
+      (attribute cue.export-links)
+      (attribute cue.export-sigs))]))
+
+
 ;; Sig-Info -> (listof (pairof identifier? Type))
 ;; GIVEN: signature information
 ;; RETURNS: a mapping from internal names to types
@@ -199,6 +274,22 @@
     (and v (cdr v))))
 
 
+;; define-values/invoke-unit handling
+(define (check-define-values/invoke-unit form [expected #f])
+  (define expected-type
+    (match expected
+      [(tc-result1: type) (resolve type)]
+      [_ #f]))
+  (ret (parse-and-check-define-values/invoke-unit form expected-type)))
+
+(define (parse-and-check-define-values/invoke-unit form expected)
+  (printf "CHECKING define-values/invoke-unit\n")
+  (define forms
+    (trawl-for-property form tr:unit:def-val/inv-unit-expr-property))
+  (printf "Forms: ~a\n" forms)
+  -Void)
+
+
 ;; Syntax Option<TCResults> -> TCResults
 ;; Type-check a unit form
 (define (check-unit form [expected #f])
@@ -211,9 +302,158 @@
      (ret (parse-and-check form unit-type))]
     [_ (ret (parse-and-check form #f))]))
 
+;; Syntax Option<TCResultss> -> TCResults
+
+(define (check-invoke-unit form [expected #f])
+  (define expected-type 
+    (match expected
+      ;; I think this is wrong, since invoke may return multiple values
+      [(tc-result1: type) (resolve type)]
+      [_ #f]))
+  #;
+  (ret (parse-and-check-invoke form expected-type))
+  (define ret-val (ret (parse-and-check-invoke form expected-type)))
+  (printf "made it out of parse-and-check\n")
+  (printf "ret: ~a\n" ret-val)
+  ret-val
+  )
+
+;; Handle checking compound-unit and compound-unit/infer forms
+;; the following invariant should hold
+;; if the infer-table is #f then the form was compound-unit and
+;; the list of forms-to-check will be non-empty
+;; otherwise the expression was compound-unit/infer 
+;; and the forms-to-check list will be empty but infer-table will
+;; contain the relevant forms
+;;
+;; In either case a pass over both of these expressions
+;; will produce the correct list of forms to typecheck
+(define (check-compound-unit form [expected #f])
+  (define expected-type
+    (match expected
+      [(tc-result1: type) (resolve type)]
+      [_ #f]))
+  (ret (parse-and-check-compound form expected-type)))
+
+(define (parse-and-check-compound form expected-type)
+  (define-values (link-mapping compound-import-links compound-export-sigs 
+                               infer-table compound-expr)
+    (parse-compound-unit form))
+  
+  (printf "INFER-TABLE: ~a\n" infer-table)
+  (printf "COMPOUND-IMPORT-LINKS: ~a\n" compound-import-links)
+  (define (lookup-link-id id) (lookup-type id link-mapping))
+  (define (lookup-sig-id id) 
+    (lookup-type id (map (lambda (k/v) (cons (cdr k/v) (car k/v))) link-mapping)))
+  
+  (define (set-union lst1 lst2)
+    (remove-duplicates (append lst1 lst2) free-identifier=?))
+  (define (set-intersect lst1 lst2)
+    (filter 
+     (lambda (e) (member e lst2 free-identifier=?))
+     lst1))
+  
+  (define import-signatures (map lookup-signature (map lookup-link-id compound-import-links)))
+  (define export-signatures (map lookup-signature compound-export-sigs))
+  
+  (define forms-to-check
+    (trawl-for-property compound-expr tr:unit:compound:expr-property))
+  
+  (define-values (check _ init-depends)
+    (for/fold ([check -Void]
+               [seen-init-depends compound-import-links]
+               [calculated-init-depends '()])
+              ([form (in-list forms-to-check)])
+      (define-values (unit-expr-stx import-link-ids export-link-ids export-sig-ids)
+        (parse-compound-unit-expr form))
+      
+      (define import-sigs (map lookup-signature (map lookup-link-id import-link-ids)))
+      (define export-sigs (map lookup-signature export-sig-ids))
+      ;; I don't think this unit supertype is really the correct thing
+      ;; Somehow need to keep track of the init-depends
+      (define unit-expected-type 
+        (-unit import-sigs 
+               export-sigs 
+               (map lookup-signature
+                    (map lookup-sig-id (set-intersect seen-init-depends import-link-ids))) 
+               ManyUniv))
+      (define unit-expr-type (tc-expr/t unit-expr-stx))
+      (check-below unit-expr-type unit-expected-type)
+      (define-values (check new-init-depends)
+        (match unit-expr-type
+          [(Unit: _ _ ini-deps ty) 
+           (values ty (set-intersect (map Signature-name ini-deps) compound-import-links))]
+          [_ (values #f null)]))
+      (values check 
+              (set-union seen-init-depends export-link-ids) 
+              (set-union calculated-init-depends new-init-depends))))
+  
+  (printf "Compound forms to check: ~a\n" forms-to-check)
+  (if check
+      ;; is this true? Does a compound always have no init-depends?
+      (-unit import-signatures export-signatures init-depends check)
+      -Bottom))
+
+(define (parse-and-check-invoke form expected-type)
+  (print-signature-env)
+  (printf "invoke form: ~a\n" form)
+  (define form-to-check
+    (first (trawl-for-property form tr:unit:invoke:expr-property)))
+  (printf "forms-to-check: ~a\n" form-to-check)
+  (define-values (unit-expr-stx sig-ids)
+    (syntax-parse form-to-check
+      #:literal-sets (kernel-literals)
+      #:literals (void)
+      [(#%expression 
+        (begin
+          (#%plain-app void (quote-syntax sig-id:id) ...)
+          expr))
+       (values #'expr (syntax->list #'(sig-id ...)))]))
+  (printf "sigs: ~a\n" sig-ids)
+  (printf "unit-expr-stx: ~a\n" unit-expr-stx)
+  (define import-signatures (map lookup-signature sig-ids))
+  (define imports-sig-stx (map cons import-signatures sig-ids))
+  
+  (define expected-unit-type
+    ;; is null the correct value for the init-depend signatures???
+    (-unit import-signatures null null ManyUniv))
+  (define unit-expr-type
+    (tc-expr/t unit-expr-stx))
+  (printf "unit-expr-type: ~a\n" unit-expr-type)
+  (printf "before check-below is ok?\n")
+  (check-below unit-expr-type expected-unit-type)
+  (printf "Just before cond is ok\n")
+ 
+  (cond 
+   ;; not a unit then tc-error/expr
+   [(Unit? unit-expr-type)
+    (for* ([(sig stx) (in-dict imports-sig-stx)]
+           [(-id sig-type) (in-dict (Signature-mapping sig))])
+      (printf "inside for*\n")
+      ;; FIXME: so that replacing this context is unnecessary
+      (define id (format-id stx "~a" -id))
+      (define lexical-type (lookup-type/lexical id))
+      (printf "id: ~a\n lexical-type: ~a\n" id lexical-type)
+      ;; type mismatch 
+      (unless (subtype lexical-type sig-type)
+        (type-mismatch sig-type lexical-type "TODO: message about signature")))
+    (define result-type (Unit-result unit-expr-type))
+    (match result-type
+      [(Values: (list (Result: t _ _) ...))
+       t]
+      [(AnyValues: f) ManyUniv]
+      ;; Should there be a ValuesDots case here?
+      )]
+   [else 
+    (tc-error/expr #:stx unit-expr-stx
+                   #:return -Bottom
+                   "TODO: Didn't get a unit")]))
+
+
 ;; NEW 
 
 (define (parse-and-check form expected)
+  (print-signature-env)
   (syntax-parse form
     [u:unit-expansion
      (define body-stx #'u.body-stx)
@@ -236,6 +476,23 @@
      
      (define local-sig-type-map
        (apply append (map make-local-type-mapping imports-info)))
+     
+     ;; Need to pass on to tc/letrec to ensure variables defined with the correct types
+     (define export-signature-type-map
+       (apply append (map make-local-type-mapping exports-info)))
+     (printf "EXPORT TYPE MAPPING: ~a\n" export-signature-type-map)
+     
+     ;; Thunk to pass to tc/letrec-values to check export subtyping
+     ;; Error messages can be improved
+     (define (check-exports-thunk)
+       (for ([(id expected-type) (in-dict export-signature-type-map)])
+         (define id-lexical-type (lookup-type/lexical id))
+         (unless (subtype id-lexical-type expected-type)
+           (type-mismatch expected-type id-lexical-type
+                          "TODO: error message about export signature"))))
+     
+     
+     
      (define signature-annotations
        (arrowize-mapping local-sig-type-map))
      
@@ -285,39 +542,24 @@
 
      (printf "ann/def-names: ~a\n" ann/def-names)
      (printf "ann/def-exprs: ~a\n" ann/def-exprs)
-     ;; split up the annotations and definitions
+     (printf "body-forms: ~a\n" body-forms)
       
       
-      ;; process annotations, combine with import/export signatures
+                                             
+     ;; FIXME
       
-      
-     #| 
-      (define local-imports-type-map
-        (apply append (map make-local-type-mapping imports-info)))
-      (define import-signature-annotations
-        (arrowize-mapping local-imports-type-map))
-      |#
-      
-      
-      
-      
-      (printf "body-forms: ~a\n" body-forms)
-      
-      
-      
-      
-      
-                                        
-      ;; FIXME
-      
-      (printf "expression forms: ~a\n" expression-forms)
-      (define unit-type
-        (with-lexical-env/extend-types 
-          (map car signature-annotations)
-          (map cdr signature-annotations)
-          (define res (tc/letrec-values ann/def-names ann/def-exprs #`(#,@expression-forms)))
-          
-          (printf "res: ~a\n" res)
+     (printf "expression forms: ~a\n" expression-forms)
+     (define unit-type
+       (with-lexical-env/extend-types 
+         (map car signature-annotations)
+         (map cdr signature-annotations)
+         (define res (tc/letrec-values ann/def-names 
+                                       ann/def-exprs 
+                                       #`(#,@expression-forms)
+                                       #f
+                                       check-exports-thunk))
+         
+         (printf "res: ~a\n" res)
           
           
           (printf "annotation/definition-forms: ~a\n" annotation/definition-forms)
@@ -339,20 +581,21 @@
           ;; 5. type check expressions
           ;; 6. determine `invoke` type
           ;; 7. correctly handle subtyping with exports
-          #;
-          (define result-type
+          
+          (define invoke-type
             (match res
-              []
-                ))
+              [(tc-results: tps) (-values tps)]))
           
           
-          (make-Unit import-signatures 
+          (-unit import-signatures 
                      export-signatures
                      init-depend-signatures 
-                     (-values (tc-results-ts res))
+                     invoke-type
+                     ;(-values (tc-results-ts res))
                      #;
                      (match res
                        [(tc-result1: t) t]))))
+     (printf "UNIT FINAL TYPE: ~a\n" unit-type)
       unit-type]))
 
 #;
@@ -747,8 +990,8 @@
     [stx
      #:when (accessor #'stx)
      (list form)]
-    [(let-values (b ...) body ...)
-     (recur-on-all #'(b ... body ...))]
+    [(let-values ([(x ...) rhs ...] ...) body ...)
+     (recur-on-all #'(rhs ... ... body ...))]
     ;; for letrecs, traverse the RHSs too
     [(letrec-values ([(x ...) rhs ...] ...) body ...)
      (recur-on-all #'(rhs ... ... body ...))]

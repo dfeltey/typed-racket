@@ -86,10 +86,14 @@
   ;; invoke properties
   (tr:unit:invoke tr:unit:invoke #:mark)
   (tr:unit:invoke:expr tr:unit:invoke:expr)
-  ;; Temporary
   (tr:unit:definition tr:unit:definition)
-  ;; need to recover a (void) for typechecking units
-  (tr:unit:void tr:unit:void)
+  ;; support infer/non-infer forms with the same property
+  (tr:unit:compound tr:unit:compound)
+  (tr:unit:compound:expr tr:unit:compound:expr)
+  ;; properties for handling define-values/invoke-unit
+  (tr:unit:def-val/inv-unit tr:unit:def-val/inv-unit #:mark)
+  (tr:unit:def-val/inv-unit-expr tr:unit:def-val/inv-unit-expr)
+  ;; infer forms
   
   )
 

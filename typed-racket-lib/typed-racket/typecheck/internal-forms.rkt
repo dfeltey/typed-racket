@@ -29,12 +29,14 @@
   predicate-assertion
   type-declaration
   typed-define-signature
+  typed-define-values/invoke-unit
   typecheck-failure
 
   type-alias?
   typed-struct?
   typed-struct/exec?
-  typed-define-signature?)
+  typed-define-signature?
+  typed-define-values/invoke-unit?)
 
 (module forms racket/base
   (require (for-syntax racket/base))
@@ -59,7 +61,8 @@
                   declare-refinement-internal
                   :-internal
                   typecheck-fail-internal
-                  define-signature-internal))
+                  define-signature-internal
+                  define-values/invoke-unit-internal))
 
 (require (submod "." forms) (submod "." forms literal-set))
 
@@ -145,7 +148,14 @@
   [type-declaration
     (:-internal id:identifier type)]
   [typed-define-signature
-   (define-signature-internal name super (binding ...))])
+   (define-signature-internal name super (binding ...))]
+  ;; This should be a decent initial attempt at making
+  ;; define-values/invoke-unit work, the unit-expr is
+  ;; unnecessary at this point since it will be handled
+  ;; when expressions are typechecked
+  [typed-define-values/invoke-unit
+   (define-values/invoke-unit-internal (isig:id ...)
+                                       (esig:id ...))])
 
 ;; Define separately outside of `define-internal-classes` since this form
 ;; is meant to appear in expression positions, so it doesn't make sense to use

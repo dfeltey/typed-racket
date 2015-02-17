@@ -376,9 +376,9 @@
    
    ;; parsing tests for Unit types
    [(Unit (import) (export) (init-depend) String)
-    (make-Unit null null null -String)]
+    (make-Unit null null null (-values (list -String)))]
    [(Unit (import) (export) String)
-    (make-Unit null null null -String)]
+    (make-Unit null null null (-values (list -String)))]
    [FAIL (Unit (import) (export) (init-depend))]
    [FAIL (Unit (import) (export))]
    ))

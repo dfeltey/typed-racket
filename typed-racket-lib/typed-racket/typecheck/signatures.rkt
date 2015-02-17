@@ -23,7 +23,10 @@
   ([cond-contracted check-class (syntax? (or/c tc-results/c #f) . -> . full-tc-results/c)]))
 
 (define-signature check-unit^
-  ([cond-contracted check-unit (syntax? (or/c tc-results/c #f) . -> . full-tc-results/c)]))
+  ([cond-contracted check-unit (syntax? (or/c tc-results/c #f) . -> . full-tc-results/c)]
+   [cond-contracted check-invoke-unit (syntax? (or/c tc-results/c #f) . -> . full-tc-results/c)]
+   [cond-contracted check-compound-unit (syntax? (or/c tc-results/c #f) . -> . full-tc-results/c)]
+   [cond-contracted check-define-values/invoke-unit (syntax? (or/c tc-results/c #f) . -> . full-tc-results/c)]))
 
 (define-signature tc-if^
   ([cond-contracted tc/if-twoarm ((syntax? syntax? syntax?) ((or/c tc-results/c #f)) . ->* . full-tc-results/c)]))

@@ -32,19 +32,94 @@
   (test-suite
    "unit typechecking tests"
    
+   #|
+   This should typecheck, but doesn't because fact has no type annotation
    
-   ;; I want to write this, but this doesn't actually work
+   (define-signature fact^
+     ([fact : (-> Integer Integer)]))
+
+
+
+   (define-unit fact@
+   (import (prefix i: fact^))
+   (export fact^)
+   (define (fact n) 
+   (if (< n 1) 
+   1
+   (* n (i:fact (sub1 n)))))
+   fact)
+   |#
+   
    [tc-err
-    (module Test typed/racket/base
-      (require typed/racket/unit)
+    (let ()
+      (unit (import)
+            (export)
+        (+ 1 "bad"))
+      (error ""))]
+   
+   [tc-err
+    (let ()
       (define-signature x^ ([x : String]))
       (unit (import x^) (export)
         (: y Integer)
         (define y x)
-        y))]
-   
+        y)
+      (error ""))]
+   ;; Type mismatch in unit body
    [tc-err
-    (unit (import) (export)
-      (: x String)
-      (define x 5))]))
+    (let ()  
+      (unit (import) (export)
+        (: x String)
+        (define x 5))
+      (error ""))]
+   [tc-err
+    (let ()
+      (define-signature a^ ([a : String]))
+      (unit (import) (export a^) (define a 5))
+      (error ""))]
+   [tc-err
+    (let ()
+      (define-signature a^ ([a : Integer]))
+      (define a "foo")
+      (invoke-unit (unit (import a^) (export) a) (import a^))
+      (error ""))]
+   [tc-err
+    (let ()
+      (define-signature a^ ([a : Integer]))
+      (unit
+        (import a^)
+        (export)
+        (: x String)
+        (define x a))
+      (error ""))]
+   
+   ;; This tests that the linking clauses in compound-unit forms
+   ;; are correctly satisfied
+   ;; This bug seems pretty subtle, and the type mismatch error
+   ;; message doesn't make it obvious why it fails to typecheck
+   [tc-err
+    (let ()
+      (define-signature a^ ())
+       
+      (define-unit a1
+        (import)
+        (export a^))
+       
+      (define-unit a2
+        (import)
+        (export a^))
+       
+      (define-unit u
+        (import a^)
+        (export)
+        (init-depend a^))
+       
+      (define-compound-unit w
+        (import)
+        (export)
+        (link
+         (([A1 : a^]) a1)
+         (() u A2)
+         (([A2 : a^]) a2)))
+      (error ""))]))
 

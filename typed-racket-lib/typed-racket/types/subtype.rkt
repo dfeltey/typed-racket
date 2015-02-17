@@ -689,18 +689,19 @@
                (sub init-rest init-rest*))]
          [((Unit: imports exports init-depends t) (Unit: imports* exports* init-depends* t*))
           (printf "debugging\n")
-          (printf "~a ~a\n" t t*)
-          (printf "~a\n" (subtype* A0 t t*))
-          (subtype-seq A0
-                       (subtype* t t*))
+          (printf "t: ~a\nt*: ~a\n" t t*)
+          (printf "t `subtype` t* ~a\n" (subtype* A0 t t*))
+          (printf "here is ok?")
           ;(subtype* A0 t t*)
-          #;
-          (and ;(check-sub-signatures? imports* imports)
-               ;(check-sub-signatures? exports exports*)
-               ;; checking the init-depends should be unnecessary
-               ;; Racket should ensure they are valid subsets of imports
-               ;; and the signature subsumption should be automatic
-               (subtype* A0 t t*))]
+          
+          (and (printf "check-sub-imports: ~a\n" (check-sub-signatures? imports* imports))
+               (check-sub-signatures? imports* imports)
+               (check-sub-signatures? exports exports*)
+               ;; init depends are checked at runtime, so need this
+               ;; for proper subtyping check, this matches the model
+               (check-sub-signatures? init-depends* init-depends)
+               (subtype-seq A0
+                            (subtype* t t*)))]
          ;; otherwise, not a subtype
          [(_ _) #f])))
      (when (null? A)

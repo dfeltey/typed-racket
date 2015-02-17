@@ -577,9 +577,9 @@
                 [result SomeValues/c])
   ;; TODO: is this correct?
   [#:frees (lambda (f) (f result))]
-  [#:fold-rhs (*Unit imports
-                     exports
-                     init-depends
+  [#:fold-rhs (*Unit (map type-rec-id imports)
+                     (map type-rec-id exports)
+                     (map type-rec-id init-depends)
                      (type-rec-id result))])
 
 ;; sequences

@@ -686,7 +686,6 @@
                (or (and init-rest init-rest*
                         (sub init-rest init-rest*))
                    (and (not init-rest) (not init-rest*))))]
-               (sub init-rest init-rest*))]
          [((Unit: imports exports init-depends t) (Unit: imports* exports* init-depends* t*))
           (printf "debugging\n")
           (printf "t: ~a\nt*: ~a\n" t t*)

@@ -12,6 +12,7 @@
          syntax/id-table
          syntax/parse
          syntax/stx
+         racket/unit-exptime
          "signatures.rkt"
          (private parse-type syntax-properties type-annotation)
          (env lexical-env tvar-env global-env 
@@ -20,7 +21,7 @@
          (typecheck check-below internal-forms)
          (utils tc-utils)
          (rep type-rep)
-         (for-syntax racket/base)
+         (for-syntax racket/base racket/unit-exptime)
          (for-template racket/base
                        (private unit-literals)
                        (typecheck internal-forms)))
@@ -201,6 +202,127 @@
            #:attr import-links (syntax->list #'(import-link ...))
            #:with expr #'unit-expr))
 
+;; TODO: interp
+(struct infer-link (unit-id export-links export-sigs import-links all-imports all-exports) #:transparent)
+
+
+(define (parse-infer-table-item stx)
+  (printf "\nPARSING infer item: ~a\n\n" stx)
+  
+  (syntax-parse stx
+    #:literals (void quote-syntax #%plain-app begin #%expression #%plain-lambda)
+    [(#%expression
+      (begin
+        (#%plain-app void (quote-syntax sig-ex:id) ...)
+        (#%plain-app void (quote-syntax link-ex:id) ...)
+        (#%plain-app void (quote-syntax link-im:id) ...)
+        (#%plain-app void (quote-syntax import-sig:id) ...)
+        (#%plain-app void (quote-syntax export-sig:id) ...)
+        (#%plain-app void (quote-syntax (#%plain-app values unit-runtime-id:id)))))
+     (define type-of-id (lookup-type/lexical #'unit-runtime-id))
+     (printf "STATIC TYPE: ~a\n" type-of-id)
+     (infer-link #'unit-runtime-id
+                 (syntax->list #'(link-ex ...))
+                 (syntax->list #'(sig-ex ...))
+                 (syntax->list #'(link-im ...))
+                 (syntax->list #'(import-sig ...))
+                 (syntax->list #'(export-sig ...)))]
+    ;; Debugging only
+    [_ (printf "\nParse Failed: ~a\n\n" stx)]))
+
+;; process-infer-table : Infer-Table (Listof (Cons Id Id)) -> (Listof Syntax) (Listof (id . id))
+;; Process a compound-unit/infer forms infer table to produce syntax expected
+;; for typechecking a compound-unit, also update the link mapping
+;;
+;; We assume that the imports/exports to be inserted are uniquely determined
+;; because otherwise the untyped macro should have failed at compile time
+;;
+;; Algorithm:
+;; 1. Parse the representation of the infer-link
+;; 2. Perform a first pass to insert exports and update the link mapping
+;; 3. A second pass finishes by adding inferred imports looked up in the
+;;    new link mapping
+(define (process-infer-table infer-table init-link-map)
+  
+  (printf "\n\nPROCESSING-INFER-TABLE: ~a\n\n" infer-table)
+  
+  ;; Pass 1: parse infer-table items into infer-link structs
+  (define infer-links (map parse-infer-table-item infer-table))
+  
+  (printf "\n\nINFER-LINK-STRUCTS: ~a\n\n" infer-links)
+  
+  ;; Pass 2: Use static information associated with the unit-id
+  ;; to fill out all the export information
+  (define-values (infer-links/exports link-map/exports)
+    (for/fold ([infer-links/exports null]
+               [link-map/exports init-link-map])
+              ([link infer-links])
+      (match-define (infer-link unit-id export-links export-sigs import-links imports exports)
+                    link)
+      (define new-exports (filter-not 
+                           (lambda (id) (member id export-sigs free-identifier=?))
+                           exports))
+      (define new-links (generate-temporaries new-exports))
+      (define link-map-extension (map cons new-links new-exports))
+      (printf "In PASS1 of INFER-TABLE\n")
+      (printf "EXPORTS: ~a\n" exports)
+      (printf "NEW-EXPORTS: ~a\n" new-exports)
+      (printf "ID: ~a\n" unit-id)
+      (printf "link-map-extension: ~a\n" link-map-extension)
+      
+      (values
+       ;; create an extended infer-link
+       (append infer-links/exports
+               (list
+                (infer-link unit-id 
+                            (append new-links export-links) 
+                            (append new-exports export-sigs)
+                            import-links
+                            imports
+                            exports)))       
+       ;; update the link-map
+       (append link-map-extension link-map/exports))))
+  
+  ;; Pass 3: Use static information to fill in the import link-ids
+  (define sig/link-map (map
+                        (match-lambda 
+                         [(cons k v) (cons v k)])
+                        link-map/exports))
+  (define infer-links/imports/exports
+    (for/fold ([infer-links/imports/exports null])
+              ([link infer-links/exports])
+      (match-define (infer-link unit-id ex-links ex-sigs import-links import-sigs exports) link)
+      (define new-links
+        (filter-not
+         (lambda (id) (member id import-links free-identifier=?))
+         (map (lambda (id) (lookup-type id sig/link-map)) import-sigs)))
+      
+      (append infer-links/imports/exports
+              (list (infer-link unit-id ex-links 
+                                ex-sigs (append new-links import-links)
+                                import-sigs exports)))))
+  
+  ;; Finally map over the list converting the structs into syntax expected for typechecking
+  (define forms-to-check
+    (map
+    (match-lambda
+     [(infer-link unit-id ex-links ex-sigs im-links _ _)
+      (define (ids->row ids)
+        #`(#%plain-app void 
+                       #,@(map (lambda (id) #`(quote-syntax #,id)) ids)))
+      #`(#%expression
+         (begin
+           #,(ids->row ex-sigs)
+           #,(ids->row ex-links)
+           #,(ids->row im-links)
+           #,unit-id))])
+    infer-links/imports/exports))
+  (printf "PROCESSED-INFER-FORMS: ~a\n" forms-to-check)
+  (printf "INFER-TABLE LINK-MAP: ~a\n" link-map/exports)
+  (values forms-to-check
+          link-map/exports))
+
+
 ;; parse-compound-unit : Syntax -> (Values (Listof (Cons Id Id))
 ;;                                         (Listof Id)
 ;;                                         (Listof Id)
@@ -248,10 +370,10 @@
 ;; GIVEN: signature information
 ;; RETURNS: a mapping from internal names to types
 (define (make-local-type-mapping si)
-  (define sig (sig-info-name si))
+  (define sig (lookup-signature (sig-info-name si)))
   (define internal-names (sig-info-internals si))
   (define sig-types 
-    (map cdr (signature->bindings sig)))
+    (map cdr (Signature-mapping sig)))
   (map cons internal-names sig-types))
 
 (define (arrowize-mapping mapping)
@@ -336,12 +458,25 @@
   (ret (parse-and-check-compound form expected-type)))
 
 (define (parse-and-check-compound form expected-type)
-  (define-values (link-mapping compound-import-links compound-export-sigs 
+  (define-values (init-link-mapping compound-import-links compound-export-sigs 
                                infer-table compound-expr)
     (parse-compound-unit form))
   
-  (printf "INFER-TABLE: ~a\n" infer-table)
-  (printf "COMPOUND-IMPORT-LINKS: ~a\n" compound-import-links)
+  (printf "INFER-TABLE-IN-CHECK-COMPUND: ~a\n" infer-table)
+  ;; Get forms to check, and extend the link mapping if bindings must be inferred
+  (define-values (forms-to-check link-mapping)
+    (if infer-table
+        (process-infer-table 
+         (trawl-for-property infer-table tr:unit:compound:expr-property)
+         init-link-mapping)
+        (values
+         (trawl-for-property compound-expr tr:unit:compound:expr-property)
+         init-link-mapping)))
+  
+  ;(printf "INFER-TABLE: ~a\n" infer-table)
+  ;(printf "COMPOUND-IMPORT-LINKS: ~a\n" compound-import-links)
+  (printf "FORMS-TO-CHECK: ~a\n" forms-to-check)
+  
   (define (lookup-link-id id) (lookup-type id link-mapping))
   (define (lookup-sig-id id) 
     (lookup-type id (map (lambda (k/v) (cons (cdr k/v) (car k/v))) link-mapping)))
@@ -356,8 +491,7 @@
   (define import-signatures (map lookup-signature (map lookup-link-id compound-import-links)))
   (define export-signatures (map lookup-signature compound-export-sigs))
   
-  (define forms-to-check
-    (trawl-for-property compound-expr tr:unit:compound:expr-property))
+  
   
   (define-values (check _ init-depends)
     (for/fold ([check -Void]
@@ -369,13 +503,12 @@
       
       (define import-sigs (map lookup-signature (map lookup-link-id import-link-ids)))
       (define export-sigs (map lookup-signature export-sig-ids))
-      ;; I don't think this unit supertype is really the correct thing
-      ;; Somehow need to keep track of the init-depends
+            
       (define unit-expected-type 
         (-unit import-sigs 
                export-sigs 
                (map lookup-signature
-                    (map lookup-sig-id (set-intersect seen-init-depends import-link-ids))) 
+                    (map lookup-link-id (set-intersect seen-init-depends import-link-ids))) 
                ManyUniv))
       (define unit-expr-type (tc-expr/t unit-expr-stx))
       (check-below unit-expr-type unit-expected-type)
@@ -394,21 +527,38 @@
       (-unit import-signatures export-signatures init-depends check)
       -Bottom))
 
+;; syntax class for invoke-table
+(define-syntax-class invoke-table
+  #:literals (let-values void #%plain-app #%expression begin quote-syntax)
+  (pattern (let-values ([()
+                         (#%expression
+                          (begin (#%plain-app void (quote-syntax sig-id:id) sig-var:id ...)
+                                 (#%plain-app values)))]
+                        ...)
+             invoke-expr:expr)
+           #:with sig-vars #'(sig-var ... ...)))
+
 (define (parse-and-check-invoke form expected-type)
+  (printf "syntax transforming: ~a\n" (syntax-transforming?))
   (print-signature-env)
   (printf "invoke form: ~a\n" form)
-  (define form-to-check
-    (first (trawl-for-property form tr:unit:invoke:expr-property)))
-  (printf "forms-to-check: ~a\n" form-to-check)
-  (define-values (unit-expr-stx sig-ids)
-    (syntax-parse form-to-check
+ 
+  (define-values (sig-ids unit-expr-stx)
+    (syntax-parse form
       #:literal-sets (kernel-literals)
-      #:literals (void)
+      #:literals (void values)
       [(#%expression 
         (begin
+          (#%plain-app void (~optional (quote-syntax (#%plain-app values infer-id:id)) 
+                                       #:defaults ([infer-id #f])))
           (#%plain-app void (quote-syntax sig-id:id) ...)
           expr))
-       (values #'expr (syntax->list #'(sig-id ...)))]))
+       (printf "INFER: ~a\n" (attribute infer-id))
+       (define unit-expr-stx
+         (or (attribute infer-id)
+             (first (trawl-for-property #'expr tr:unit:invoke:expr-property))))
+       (values (syntax->list #'(sig-id ...)) unit-expr-stx)]))
+  
   (printf "sigs: ~a\n" sig-ids)
   (printf "unit-expr-stx: ~a\n" unit-expr-stx)
   (define import-signatures (map lookup-signature sig-ids))
@@ -423,31 +573,36 @@
   (printf "before check-below is ok?\n")
   (check-below unit-expr-type expected-unit-type)
   (printf "Just before cond is ok\n")
- 
+  (printf "imports-sig-mpas: ~a\n" (map Signature-mapping import-signatures))
+  
   (cond 
-   ;; not a unit then tc-error/expr
-   [(Unit? unit-expr-type)
-    (for* ([(sig stx) (in-dict imports-sig-stx)]
-           [(-id sig-type) (in-dict (Signature-mapping sig))])
-      (printf "inside for*\n")
-      ;; FIXME: so that replacing this context is unnecessary
-      (define id (format-id stx "~a" -id))
-      (define lexical-type (lookup-type/lexical id))
-      (printf "id: ~a\n lexical-type: ~a\n" id lexical-type)
-      ;; type mismatch 
-      (unless (subtype lexical-type sig-type)
-        (type-mismatch sig-type lexical-type "TODO: message about signature")))
-    (define result-type (Unit-result unit-expr-type))
-    (match result-type
-      [(Values: (list (Result: t _ _) ...))
-       t]
-      [(AnyValues: f) ManyUniv]
-      ;; Should there be a ValuesDots case here?
-      )]
-   [else 
-    (tc-error/expr #:stx unit-expr-stx
-                   #:return -Bottom
-                   "TODO: Didn't get a unit")]))
+    ;; not a unit then tc-error/expr
+    [(Unit? unit-expr-type)
+     (for* ([(sig stx) (in-dict imports-sig-stx)]
+            ;; This is wrong need to flatten the mapping to get members from 
+            ;; parent signatures as well
+            [(-id sig-type) (in-dict (Signature-mapping sig))])
+       (printf "inside for*\n")
+       ;; FIXME: so that replacing this context is unnecessary
+       ;(define id ((make-syntax-delta-introducer stx -id) -id))
+       (define id (format-id stx "~a" -id))
+       ;(define id (syntax-local-introduce (syntax-local-get-shadower -id)))
+       (define lexical-type (lookup-type/lexical id))
+       (printf "id: ~a\n lexical-type: ~a\n" id lexical-type)
+       ;; type mismatch 
+       (unless (subtype lexical-type sig-type)
+         (type-mismatch sig-type lexical-type "TODO: message about signature")))
+     (define result-type (Unit-result unit-expr-type))
+     (match result-type
+       [(Values: (list (Result: t _ _) ...))
+        t]
+       [(AnyValues: f) ManyUniv]
+       ;; Should there be a ValuesDots case here?
+       )]
+    [else 
+     (tc-error/expr #:stx unit-expr-stx
+                    #:return -Bottom
+                    "TODO: Didn't get a unit")]))
 
 
 ;; NEW 
@@ -569,9 +724,8 @@
                  (filter-not unit-type-annotation? annotation/definition-forms)))
           (printf "annotations: ~a\n" annotations)
           (printf "definitions: ~a\n" definitions)
-          (define defined-vars (apply append (map car definitions)))
-          
-          
+          ;(define defined-vars (apply append (map car definitions)))
+              
           
           ;; TODO:
           ;; 1. add types from `import` signatures to the environment

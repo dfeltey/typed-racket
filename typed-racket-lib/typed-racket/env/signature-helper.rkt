@@ -3,11 +3,14 @@
 ;; This module provides helper functions for typed signatures
 
 (require "../utils/utils.rkt"
+         (utils tc-utils)
          (env signature-env)
          (rep type-rep)
          (private parse-type)
          syntax/parse
          racket/list
+         racket/match
+         racket/unit-exptime
          (only-in racket/set subset?)
          (for-template racket/base
                        (typecheck internal-forms)))
@@ -21,11 +24,55 @@
     #:literal-sets (kernel-literals)
     #:literals (values define-signature-internal)
     [(define-values ()
-       (begin (quote-syntax (define-signature-internal name super (binding ...)))
+       (begin (quote-syntax (define-signature-internal name super (binding ...) check))
               (#%plain-app values)))
-      (define extends (and (syntax->datum #'super) (lookup-signature #'super)))
-      (define mapping (map parse-signature-binding (syntax->list #'(binding ...))))
-      (values #'name (make-Signature #'name extends mapping))]))
+     (define check? (syntax->datum #'check))
+     
+     (define extends (get-extended-signature #'name #'super check? form))
+     (define super-bindings (get-signature-mapping extends))
+     (define new-bindings (map parse-signature-binding (syntax->list #'(binding ...))))
+     (define mapping (append super-bindings new-bindings))
+
+     ;; Make sure a require/typed signature has bindings listed
+     ;; that are consistent with its statically determined bindings
+     (when check?
+       (check-signature-bindings #'name (map car mapping) form))
+          
+     (values #'name (make-Signature #'name extends mapping))]))
+
+;; check-signature-bindings : Identifier (Listof Identifier) -> Void
+;; checks that the bindings of a signature identifier are consistent with
+;; those listed in a require/typed clause
+(define (check-signature-bindings name vars stx)
+  (match-define-values (_ inferred-vars _ _) (signature-members name name))
+  (define (id-set-diff s1 s2)
+    (filter
+     (lambda (id) (not (member id s2 free-identifier=?)))
+     s1))
+  (unless (and (empty? (id-set-diff vars inferred-vars))
+               (empty? (id-set-diff inferred-vars vars)))
+    (tc-error/fields "required signature declares inconsistent members"
+                     "expected members" (map syntax-e inferred-vars)
+                     "received members" (map syntax-e vars)
+                     #:stx stx)))
+
+;; get-extended-signature : Identifier Syntax Boolean -> (Option Signature)
+;; Checks if the extended signature information must be inferred and looks
+;; up the super signature in the environment
+;; Raises an error if a super signature is inferred that is not in the
+;; signature environment
+(define (get-extended-signature name super check? stx)
+  (cond
+   [check?
+    (match-define-values (inferred-super _ _ _) (signature-members name name))
+    (and inferred-super
+         (or (lookup-signature inferred-super)
+             (tc-error/fields "required signature extends an untyped signature"
+                              "required signature" (syntax-e name)
+                              "extended signature" (syntax-e inferred-super)
+                              #:stx stx)))]
+   [(not (syntax->datum super)) #f]
+   [else (lookup-signature super)]))
 
 ;; parse-signature-binding : Syntax -> (list/c identifier? syntax?)
 ;; parses the binding forms inside of a define signature into the 
@@ -35,7 +82,7 @@
     [[name:id type]
      (cons #'name (parse-type #'type))]))
 
-;; signature->bindings : identifier? -> (listof (cons/c identifier? syntax?))
+;; signature->bindings : identifier? -> (listof (cons/c identifier? type?))
 ;; GIVEN: a signature name
 ;; RETURNS: the list of variables bound by that signature
 ;;          inherited bindings come first
@@ -48,12 +95,16 @@
         (loop (Signature-extends sig) (Signature-mapping sig) (append mapping bindings))
         (append mapping bindings))))
 
-;; (listof identifier?) -> (listof (cons/c identifier? syntax?))
+;; (listof identifier?) -> (listof (cons/c identifier? type?))
 ;; GIVEN: a list of signature names
 ;; RETURNS: the list of all bindings from those signatures
 ;; TODO: handle required renamings/prefix/only/except
 (define (signatures->bindings ids)
   (apply append (map signature->bindings ids)))
+
+;; get-signature-mapping : (Option Signature) -> (Listof (Cons Id Type))
+(define (get-signature-mapping sig)
+  (if sig (Signature-mapping sig) null))
 
 
 

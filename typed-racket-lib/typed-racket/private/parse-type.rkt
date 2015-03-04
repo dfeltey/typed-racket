@@ -377,6 +377,7 @@
                           #:defaults ([(init-depend 1) null]))
                result)
        ;; TODO: error handling when the signature is not in the environment
+       ;; TODO: handle the case where signatures in imports/exports are not distinct
        (define id->sig (lambda (id) (lookup-signature id)))
        (make-Unit (map id->sig (syntax->list #'(import ...)))
                   (map id->sig (syntax->list #'(export ...)))

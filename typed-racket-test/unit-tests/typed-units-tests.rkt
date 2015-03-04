@@ -49,6 +49,42 @@
    (* n (i:fact (sub1 n)))))
    fact)
    |#
+  [tc-e 
+   (let ()
+     (define-signature a^ ())
+     (define-signature b^ ())
+     
+     (define-unit u
+       (import a^)
+       (export))
+
+     (define-unit v
+       (import)
+       (export a^ b^)
+       5)
+
+     (define-compound-unit/infer w
+       (import)
+       (export)
+       (link (() u A)
+             (([A : a^] [B : b^]) v)))
+     
+     (define-compound-unit/infer w2
+       (import [A : a^])
+       (export)
+       (link (() u A)))
+
+     (define-compound-unit/infer w3
+       (import) 
+       (export)
+       (link u v))
+     
+     (define-compound-unit/infer w4
+       (import a^)
+       (export)
+       (link u))
+     (void))
+   -Void]
    
    [tc-err
     (let ()
@@ -56,6 +92,29 @@
             (export)
         (+ 1 "bad"))
       (error ""))]
+   
+   ;; factorial with units
+   [tc-e
+    (let ()
+      (define-signature fact^ ([fact : (-> Integer Natural)]))
+      
+      (define-unit fact@
+        (import (prefix i: fact^))
+        (export fact^)
+        (: fact (-> Integer Natural))
+        (define (fact n)
+          (if (<= n 1) 1 (* n (i:fact (sub1 n)))))
+        fact)
+      
+      (define-compound-unit/infer fact-c@
+        (import)
+        (export)
+        (link fact@))
+      
+      (define factorial (invoke-unit fact-c@))
+      
+      (factorial 5))
+    -Nat]
    
    [tc-err
     (let ()

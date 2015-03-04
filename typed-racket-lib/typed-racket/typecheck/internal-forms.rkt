@@ -147,8 +147,13 @@
     (assert-predicate-internal type predicate)]
   [type-declaration
     (:-internal id:identifier type)]
+  ;; the check field indicates whether this signature is being 
+  ;; required from an untyped context in which case the super
+  ;; value is ignored and information about parent signatures
+  ;; is inferred from static information bound to the signature
+  ;; identifier
   [typed-define-signature
-   (define-signature-internal name super (binding ...))]
+   (define-signature-internal name super (binding ...) check)]
   ;; This should be a decent initial attempt at making
   ;; define-values/invoke-unit work, the unit-expr is
   ;; unnecessary at this point since it will be handled

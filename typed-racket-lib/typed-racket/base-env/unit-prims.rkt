@@ -143,6 +143,13 @@
      vars))
   
   ;; No idea what this does
+  (define (unitify-id sig-id)
+    (lambda (id)
+      (syntax-local-introduce
+       (syntax-local-get-shadower
+        ((lambda (id-inner)
+           (syntax-local-introduce
+            ((syntax-local-make-delta-introducer sig-id) id-inner))) id)))))
  
   
   (define (get-signatures-vars stx)
@@ -345,6 +352,8 @@
     (pattern (import sig:id ...)
              #:attr untyped-import #'((import sig ...))
              #:with imports #'((quote-syntax sig) ...))))
+
+
 
 
 ;; need to do extra work to make this work with the existing

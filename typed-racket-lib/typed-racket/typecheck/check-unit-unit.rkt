@@ -44,7 +44,7 @@
     (begin 
       (#%plain-app void)
       (begin
-        (quote-syntax
+        (quote
          (:-internal var:id t))
         (#%plain-app values))))
    #:attr name #'var
@@ -89,10 +89,17 @@
        ;; in tc/letrec-values
        #;
        (when (member name import-names free-identifier=?))
+       (printf "ANN NAME: ~a\n" name)
+       (printf "EXPORT MAPPING: ~a\n" export-mapping)
+       (printf "mapped export ...: ~a\n"
+               (map (lambda (id) (free-identifier=? name id))
+                    (map car export-mapping)))
        (define form ((attribute a.subst-annotation) 
-                     (or (lookup-type name export-mapping)
-                          name)))
-       (values #`(#,@names ())  
+                     (or ;(lookup-type name export-mapping)
+                      name
+                         )))
+       (values #`(#,@names ())
+               ;; FIXME: ???
                #`(#,@exprs #,form))]
       [d:unit-body-definition
        (values #`(#,@names d.vars) #`(#,@exprs d.body))])))

@@ -687,13 +687,7 @@
                         (sub init-rest init-rest*))
                    (and (not init-rest) (not init-rest*))))]
          [((Unit: imports exports init-depends t) (Unit: imports* exports* init-depends* t*))
-          (printf "debugging\n")
-          (printf "t: ~a\nt*: ~a\n" t t*)
-          (printf "t `subtype` t* ~a\n" (subtype* A0 t t*))
-          (printf "here is ok?")
-          ;(subtype* A0 t t*)
-          
-          (and (printf "check-sub-imports: ~a\n" (check-sub-signatures? imports* imports))
+          (and ;(printf "check-sub-imports: ~a\n" (check-sub-signatures? imports* imports))
                (check-sub-signatures? imports* imports)
                (check-sub-signatures? exports exports*)
                ;; init depends are checked at runtime, so need this

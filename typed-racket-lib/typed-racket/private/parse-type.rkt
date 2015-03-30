@@ -375,14 +375,16 @@
                (:export^ export:id ...)
                (~optional (:init-depend^ init-depend:id ...) 
                           #:defaults ([(init-depend 1) null]))
-               result)
+               (~optional result
+                          #:defaults ([result #f])))
        ;; TODO: error handling when the signature is not in the environment
        ;; TODO: handle the case where signatures in imports/exports are not distinct
        (define id->sig (lambda (id) (lookup-signature id)))
+       (define res (attribute result))
        (make-Unit (map id->sig (syntax->list #'(import ...)))
                   (map id->sig (syntax->list #'(export ...)))
                   (map id->sig (syntax->list #'(init-depend ...)))
-                  (parse-values-type #'result))]
+                  (if res (parse-values-type res) (-values (list -Void))))]
       
       [(:List^ ts ...)
        (parse-list-type stx)]

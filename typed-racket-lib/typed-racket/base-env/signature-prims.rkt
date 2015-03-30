@@ -85,7 +85,7 @@
     [(_ sig-name:id super-form:extends-form forms:signature-forms)
      (define-values (members aliases)
        (process-signature-forms (syntax->list #'forms)))
-     (printf "members: ~a\n" members)
+     ;(printf "members: ~a\n" members)
      
      (define erased-members (map car members))
      

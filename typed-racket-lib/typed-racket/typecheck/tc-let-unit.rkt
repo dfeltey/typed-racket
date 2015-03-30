@@ -109,9 +109,9 @@
 ;; It is needed to typecheck units, and ensure that exported
 ;; variables are exported with the correct types
 (define (tc/letrec-values namess exprs body [expected #f] [check-thunk void])
-  (printf "namess: ~a\n" namess)
-  (printf "exprs: ~a\n" exprs)
-  (printf "letrec-values body: ~a\n" body)
+  ;(printf "namess: ~a\n" namess)
+  ;(printf "exprs: ~a\n" exprs)
+  ;(printf "letrec-values body: ~a\n" body)
   (let* ([names (stx-map syntax->list namess)]
          [orig-flat-names (apply append names)]
          [exprs (syntax->list exprs)])
@@ -129,15 +129,14 @@
            (values aliases declarations (cons #'t signature-forms))]
           [_ (values aliases declarations signature-forms)])))
     
-    
     (define-values (alias-names alias-map) (get-type-alias-info type-aliases))
     (register-all-type-aliases alias-names alias-map)
-
+    
     (for ([declaration declarations])
       (match-define (list id type) declaration)
       (register-type-if-undefined id (parse-type type))
       (register-scoped-tvars id (parse-literal-alls type)))
-
+    
     ;; add scoped type variables, before we get to typechecking
     ;; FIXME: can this pass be fused with the one immediately above?
     (for ([n (in-list names)] [b (in-list exprs)])

@@ -94,6 +94,11 @@
            #:attr type-only (attribute options.type-only)
            #:attr maker (or (attribute options.maker) #'nm.nm)))
 
+(define-syntax-class dviu-import/export
+  (pattern (sig-id:id member-id:id ...)
+           #:with sig #'sig-id
+           #:with members #'(member-id ...)))
+
 ;;; Internal form syntax matching
 
 (define-literal-set internal-form-literals #:for-label
@@ -159,8 +164,8 @@
   ;; unnecessary at this point since it will be handled
   ;; when expressions are typechecked
   [typed-define-values/invoke-unit
-   (define-values/invoke-unit-internal (isig:id ...)
-                                       (esig:id ...))])
+   (define-values/invoke-unit-internal (import:dviu-import/export ...)
+                                       (export:dviu-import/export ...))])
 
 ;; Define separately outside of `define-internal-classes` since this form
 ;; is meant to appear in expression positions, so it doesn't make sense to use

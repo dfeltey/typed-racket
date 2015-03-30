@@ -117,11 +117,18 @@
       
       ;; handle top-level define-values/invoke-unit
       [dviu:typed-define-values/invoke-unit
-       (define export-signatures (syntax->list #'(dviu.esig ...)))
-       (define exports-type-mapping (signatures->bindings export-signatures))
+       ;(define export-signatures (syntax->list #'(dviu.export.sig ...)))
+       ;(define exports-type-mapping (signatures->bindings export-signatures))
+       #;
        (for ([(id ty) (in-dict exports-type-mapping)])
-         (register-type-if-undefined id ty))
+       (register-type-if-undefined id ty))
        ;; FIXME: should these definitions be added to this list?
+       
+       (for ([export-sig (in-list (syntax->list #'(dviu.export.sig ...)))]
+             [export-ids (in-list (syntax->list #'(dviu.export.members ...)))])
+         (for ([id (in-list (syntax->list  export-ids))]
+               [ty (in-list (map cdr (signature->bindings export-sig)))])
+           (register-type-if-undefined id ty)))
        (list)]
 
       ;; values definitions
@@ -227,11 +234,13 @@
        (tc-expr #'stx)]
       ;; This may not make sense since define-values/invoke-unit isn't really an expression
       [dviu:typed-define-values/invoke-unit
-       (define imports (signatures->bindings (syntax->list #'(dviu.isig ...))))
-       (printf "IMPORTS PASS 2: ~a\n" imports)
-       (for ([(id expected-type) (in-dict imports)])
-         (define lexical-type (lookup-type/lexical id))
-         (check-below lexical-type expected-type))
+       (for ([import-sig (in-list (syntax->list #'(dviu.import.sig ...)))]
+             [import-ids (in-list (syntax->list #'(dviu.import.members ...)))])
+         (for ([member (in-list (syntax->list  import-ids))]
+               [expected-type (in-list (map cdr (signature->bindings import-sig)))])
+           (define lexical-type (lookup-type/lexical member))
+           ;(printf "new attempt lexical-type : ~a\n" lexical-type)
+           (check-below lexical-type expected-type)))
        'no-type]
       ;; these forms we have been instructed to ignore
       [stx:ignore^
@@ -325,11 +334,6 @@
   (define-values (type-alias-names type-alias-map)
     (get-type-alias-info type-aliases))
   
-  ;; Add signatures to the signature environment
-  (for ([sig-form signature-defs])
-    (define-values (name sig) (parse-signature sig-form))
-    (register-signature! name sig))
-  
   ;; Add the struct names to the type table, but not with a type
   (let ((names (map name-of-struct struct-defs))
         (type-vars (map type-vars-of-struct struct-defs)))
@@ -342,6 +346,12 @@
 
   (register-all-type-aliases type-alias-names type-alias-map)
 
+  ;; Register signatures once all type aliases and struct types
+  ;; have been added to the type table
+  (for ([sig-form signature-defs])
+    (define-values (name sig) (parse-signature sig-form))
+    (register-signature! name sig))
+  
   (do-time "starting struct handling")
   ;; Parse and register the structure types
   (define parsed-structs
@@ -351,6 +361,7 @@
       parsed))
 
   (refine-struct-variance! parsed-structs)
+
 
   ;; register the bindings of the structs
   (define struct-bindings (map register-parsed-struct-bindings! parsed-structs))

@@ -20,8 +20,8 @@
 (define (check-sub-signatures? sub-sigs sup-sigs)
   (define sub-exts (append-map signature-extensions sub-sigs))
   (define sup-exts (append-map signature-extensions sup-sigs))
-  (printf "sub-exts: ~a\n" sub-exts)
-  (printf "sup-exts: ~a\n" sup-exts)
+  ;(printf "sub-exts: ~a\n" sub-exts)
+  ;(printf "sup-exts: ~a\n" sup-exts)
   (define (subset? s1 s2)
     (andmap
      (lambda (s1-elem) (member s1-elem s2 free-identifier=?))

@@ -53,7 +53,8 @@
                    export
                    init-depend
                    link
-                   prefix)
+                   prefix
+                   rename)
           "../typecheck/internal-forms.rkt"
           "base-types.rkt"
           "base-types-extra.rkt"
@@ -108,7 +109,7 @@
              #:attr renamers (attribute sig.rename)))
   
   (define-syntax-class sig-spec
-    #:literals (prefix)
+    #:literals (prefix rename)
     (pattern sig-id:id
              #:attr rename (lambda (id) id)
              #:with sig-name #'sig-id)
@@ -117,6 +118,21 @@
                                                  "~a~a"
                                                  #'p
                                                  ((attribute sig.rename) id)))
+             #:with sig-name #'sig.sig-name)
+    (pattern (rename sig:sig-spec (new:id old:id) ...)
+             #:attr rename 
+             (lambda (id)
+               (define mapping  (map cons  
+                                     (syntax->list #'(old ...))
+                                     (syntax->list #'(new ...))))
+               (define (lookup id) 
+                 (define lu (member id mapping 
+                                    (lambda (x y) 
+                                      (free-identifier=? x (car y)))))
+                 (and lu (cdar lu)))
+
+               (define rn ((attribute sig.rename) id))
+               (or (lookup rn) rn))
              #:with sig-name #'sig.sig-name))
   
   
@@ -208,7 +224,7 @@
      #`(define-syntax (name stx)
          (syntax-parse stx
            [(_) #'(begin)]
-           [(name e) 
+           [(name e)
             (define exp-e 
               (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
             (syntax-parse exp-e
@@ -216,7 +232,8 @@
               [(~var b (begin-form #'name))
                #'b.trampoline-form]
               case ...
-              [_ exp-e])]
+              [_ 
+               exp-e])]
            [(~var e (name-form #'name))
             #'e.trampoline-form]))]
     [(_ (name:id arg ...) case ...)
@@ -246,28 +263,50 @@
 ;; the defined values must be registered in the environment
 ;;
 ;; TODO: prefixes/etc on import/exports
+(define-for-syntax (imports/members sig-id)
+  (match-define-values (_ (list imp-mem ...) _ _)
+                       (signature-members sig-id sig-id))
+  #`(#,sig-id #,@(map (lambda (id)
+                        (local-expand
+                         id
+                         (syntax-local-context)
+                         (kernel-form-identifier-list)))
+                      imp-mem)))
+
+(define-for-syntax (process-dv-exports es)
+  (for/list ([e (in-list es)])
+    (syntax-parse e
+      [s:sig-spec
+       (define sig-id #'s.sig-name)
+       (define renamer (attribute s.rename))
+       (match-define-values (_ (list ex-mem ...) _ _)
+                            (signature-members sig-id sig-id))
+       #`(#,sig-id #,@(map renamer ex-mem))])))
+
 (define-syntax (define-values/invoke-unit stx)
   (syntax-parse stx 
     #:literals (import export)
     [(_ unit-expr
-        (import isig:id ...)
-        (export esig:id ...))
-     (with-syntax ([(temp) (generate-temporaries #'(temp))])
-         #`(begin
-             #,(internal (quasisyntax/loc stx
-                           (define-values/invoke-unit-internal
-                             (isig ...)
-                             (esig ...))))
-             (: temp (Unit (import isig ...)
-                           (export esig ...)
-                           ;; FIXME this needs to be AnyValues
+        (import isig:sig-spec ...)
+        (export esig:sig-spec ...))
+     (define imports-stx (syntax->list #'(isig.sig-name ...)))
+     (define exports-stx (syntax->list #'(esig ...)))
+     (with-syntax ([temp (syntax-local-introduce (generate-temporary))])
+       #`(begin
+           #,(internal (quasisyntax/loc stx
+                         (define-values/invoke-unit-internal
+                           (#,@(map imports/members imports-stx))
+                           (#,@(process-dv-exports exports-stx)))))
+           (: temp (Unit (import isig.sig-name ...)
+                         (export esig.sig-name ...)
+                         ;; FIXME this needs to be AnyValues
                            Any))
-             (define temp unit-expr)
-             
-             #,(ignore (quasisyntax/loc stx
-                         (untyped-define-values/invoke-unit temp
-                                                            (import isig ...)
-                                                            (export esig ...))))))]))
+           (define temp unit-expr)
+           
+           #,(ignore (quasisyntax/loc stx
+                       (untyped-define-values/invoke-unit unit-expr
+                                                          (import isig ...)
+                                                          (export esig ...))))))]))
 
 
 (begin-for-syntax
@@ -338,7 +377,7 @@
      #`(begin
          #,(internal (quasisyntax/loc stx
                        (define-values/invoke-unit-internal
-                         (#,@(attribute dviui.inferred-imports))
+                         (#,@(map imports/members (attribute dviui.inferred-imports)))
                          (#,@(attribute dviui.inferred-exports)))))
          #,(ignore (quasisyntax/loc stx dviui.untyped-stx)))]))
 
@@ -423,6 +462,8 @@
 
 
 ;; This is the working version use this!!!
+;; This macro is broken ...???
+#;
 (define-trampolining-macro add-tags
   [(define-values (name:id ...) rhs)
    #`(define-values (name ...)
@@ -432,9 +473,12 @@
                (void (lambda () name) ...)
                rhs))
           'def/type))]
-  [e (tr:unit:body-exp-def-type-property #'e 'expr)])
+  [e 
+   (printf "ADD-TAGS: ~a\n" #'e)
+   (tr:unit:body-exp-def-type-property #'e 'expr)]
+  [_ (printf "WTF\n")])
 
-#;
+;; This seems to do the correc thing
 (define-syntax (add-tags stx)
   (syntax-parse stx
     [(_) #'(begin)]
@@ -467,7 +511,7 @@
                                                init-depends)
   (define (make-index-row sig-id renamer)
     (with-syntax ([(sig-var ...) (map renamer (get-signature-vars sig-id))]) 
-      #`(list (quote-syntax #,sig-id) (cons (quote-syntax sig-var) (lambda () sig-var)) ...)))
+      #`(list (quote #,sig-id) (cons (quote sig-var) (lambda () sig-var)) ...)))
   (tr:unit:index-table-property
    (with-syntax ([(init-depend ...) (syntax->list init-depends)])
      #`(let-values ([() (#%expression
@@ -481,7 +525,7 @@
                                                export-renamers))
                                  (values)))]
                     [() (#%expression
-                         (begin  (void (quote-syntax init-depend) ...)
+                         (begin  (void (quote init-depend) ...)
                                  (values)))])
          (void)))
    #t))

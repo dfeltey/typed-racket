@@ -27,6 +27,7 @@
                       syntax/flatten-begin
                       syntax/kerncase
                       "../private/syntax-properties.rkt"
+                      "../typecheck/internal-forms.rkt"
                      ; (private parse-type)
                      ;(rep type-rep)
                      ; (env signature-helper)
@@ -55,7 +56,6 @@
                    link
                    prefix
                    rename)
-          "../typecheck/internal-forms.rkt"
           "base-types.rkt"
           "base-types-extra.rkt"
           (for-label "colon.rkt")

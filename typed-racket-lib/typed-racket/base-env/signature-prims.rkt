@@ -12,6 +12,7 @@
                      racket/syntax
                      syntax/kerncase
                      "../private/syntax-properties.rkt"
+                     "../typecheck/internal-forms.rkt"
                      syntax/id-table
                      racket/dict
                      racket/unit-exptime
@@ -19,7 +20,6 @@
          (only-in racket/unit
                   [define-signature untyped-define-signature]
                   extends)
-         "../typecheck/internal-forms.rkt"
          (for-label "colon.rkt")
          (only-in "../../typed/racket/base.rkt" define-type)
          ;(only-in typed/racket/base define-type)

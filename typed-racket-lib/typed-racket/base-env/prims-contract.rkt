@@ -121,6 +121,10 @@
               (~var constructor (opt-constructor legacy #'nm.nm))]
              #:with (constructor-parts ...) #'constructor.value))
 
+  (define-syntax-class signature-clause
+    #:attributes (sig-name (member 1))
+    (pattern [#:signature sig-name:id (member ...)]))
+
   (define-syntax-class opaque-clause
     ;#:literals (opaque)
     #:attributes (ty pred opt)
@@ -135,6 +139,8 @@
      #`(require/opaque-type oc.ty oc.pred #,lib . oc.opt))
    (pattern (~var strc (struct-clause legacy)) #:attr spec
      #`(require-typed-struct strc.nm (strc.body ...) strc.constructor-parts ... #,lib))
+   (pattern (~var sig signature-clause) #:attr spec
+            #`(require-typed-signature sig.sig-name (sig.member ...) #,lib))
    (pattern sc:simple-clause #:attr spec
      #`(require/typed #:internal sc.nm sc.ty #,lib)))
 
@@ -438,3 +444,16 @@
                            [sel (nm -> ty)]) ...)))]))
 
   (values (rts #t) (rts #f))))
+
+(define (require-typed-signature stx)
+  (syntax-parse stx #:literals (:)
+                [(_ sig-name:id ([var:id : ty] ...) lib)
+                 (quasisyntax/loc stx
+                   (begin
+                     (require (only-in lib sig-name))
+                     #,(internal (quasisyntax/loc stx
+                                   (define-signature-internal sig-name #f
+                                     ([var ty] ...)
+                                     ;; infer parent relationships using the static information
+                                     ;; bound to this signature
+                                     #t)))))]))

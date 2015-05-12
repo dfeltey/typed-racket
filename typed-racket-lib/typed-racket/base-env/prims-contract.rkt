@@ -19,13 +19,15 @@
 
 (provide require/opaque-type require-typed-struct-legacy require-typed-struct
          require/typed-legacy require/typed require/typed/provide
-         require-typed-struct/provide cast make-predicate define-predicate)
+         require-typed-struct/provide cast make-predicate define-predicate
+         require-typed-signature)
 
 (module forms racket/base
   (require (for-syntax racket/lazy-require racket/base))
   (begin-for-syntax 
     (lazy-require [(submod "..")
-                   (require/opaque-type 
+                   (require/opaque-type
+                    require-typed-signature
                     require-typed-struct-legacy
                     require-typed-struct
                     require/typed-legacy require/typed require/typed/provide
@@ -36,7 +38,8 @@
        (with-syntax ([(names ...) (generate-temporaries #'(id ...))])
          #'(begin (provide (rename-out [names id] ...))
                   (define-syntax (names stx) (id stx)) ...))]))
-  (def require/opaque-type 
+  (def require/opaque-type
+        require-typed-signature
         require-typed-struct-legacy
         require-typed-struct
         require/typed-legacy require/typed require/typed/provide

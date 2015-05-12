@@ -348,6 +348,13 @@
 
   ;; Register signatures once all type aliases and struct types
   ;; have been added to the type table
+  ;(printf "forms: ~a\n" forms)
+  ;(define sig (fourth forms))
+  ;(printf "sig-form: ~a\n" sig)
+  #;
+  (printf "(typed-define-signature? sig-form): ~a\n"
+          (typed-define-signature? sig))
+  ;(printf "signature-forms: ~a\n" signature-defs)
   (for ([sig-form signature-defs])
     (define-values (name sig) (parse-signature sig-form))
     (register-signature! name sig))
@@ -381,7 +388,7 @@
   ;;      iow, why isn't `merge-def-binding` always `error`?
   (define def-tbl
     (for/fold ([h (make-immutable-free-id-table)])
-      ([def (in-list defs)])
+              ([def (in-list defs)])
       ;; TODO figure out why without these checks some tests break
       (define (plain-stx-binding? def)
         (and (def-stx-binding? def) (not (def-struct-stx-binding? def))))
@@ -412,24 +419,24 @@
   (define provide-tbl
     (for/fold ([h (make-immutable-free-id-table)]) ([p (in-list provs)])
       (syntax-parse p #:literal-sets (kernel-literals)
-        [(#%provide form ...)
-         (for/fold ([h h]) ([f (in-syntax #'(form ...))])
-           (syntax-parse f
-             [i:id
-              (dict-update h #'i (lambda (tail) (cons #'i tail)) '())]
-             [((~datum rename) in out)
-              (dict-update h #'in (lambda (tail) (cons #'out tail)) '())]
-             [(name:unknown-provide-form . _)
-              (parameterize ([current-orig-stx f])
-                (tc-error "provide: ~a not supported by Typed Racket" (syntax-e #'name.name)))]
-             [_ (parameterize ([current-orig-stx f])
-                  (int-err "unknown provide form"))]))]
-        [_ (int-err "non-provide form! ~a" (syntax->datum p))])))
+                    [(#%provide form ...)
+                     (for/fold ([h h]) ([f (in-syntax #'(form ...))])
+                       (syntax-parse f
+                         [i:id
+                          (dict-update h #'i (lambda (tail) (cons #'i tail)) '())]
+                         [((~datum rename) in out)
+                          (dict-update h #'in (lambda (tail) (cons #'out tail)) '())]
+                         [(name:unknown-provide-form . _)
+                          (parameterize ([current-orig-stx f])
+                            (tc-error "provide: ~a not supported by Typed Racket" (syntax-e #'name.name)))]
+                         [_ (parameterize ([current-orig-stx f])
+                              (int-err "unknown provide form"))]))]
+                    [_ (int-err "non-provide form! ~a" (syntax->datum p))])))
   ;; compute the new provides
   (define-values (new-stx/pre new-stx/post)
     (with-syntax*
-        ([the-variable-reference (generate-temporary #'blame)]
-         [mk-redirect (generate-temporary #'make-redirect)])
+      ([the-variable-reference (generate-temporary #'blame)]
+       [mk-redirect (generate-temporary #'make-redirect)])
       (define-values (defs export-defs provs aliasess)
         (generate-prov def-tbl provide-tbl #'the-variable-reference #'mk-redirect))
       (define aliases (apply append aliasess))
@@ -473,28 +480,28 @@
            ;; submodule. The `mk-redirect` identifier is also used in
            ;; the `new-export-defs`.
            (begin-for-syntax
-            ;; We explicitly insert a `require` here since this module
-            ;; is `lazy-require`d and thus just doing a `require`
-            ;; outside wouldn't actually make the module
-            ;; available. The alternative would be to add an
-            ;; appropriate-phase `require` statically in a module
-            ;; that's non-dynamically depended on by
-            ;; `typed/racket`. That makes for confusing non-local
-            ;; dependencies, though, so we do it here. 
-            (require typed-racket/utils/redirect-contract)
-            ;; We need a submodule for a for-syntax use of
-            ;; `define-runtime-module-path`:
-            (module #%contract-defs-reference racket/base
-              (require racket/runtime-path
-                       (for-syntax racket/base))
-              (define-runtime-module-path-index contract-defs-submod
-                '(submod ".." #%contract-defs))
-              (provide contract-defs-submod))
-            (require (submod "." #%contract-defs-reference))
-            ;; Create the redirection funtion using a reference to
-            ;; the submodule that is friendly to `raco exe`:
-            (define mk-redirect
-              (make-make-redirect-to-contract contract-defs-submod)))
+             ;; We explicitly insert a `require` here since this module
+             ;; is `lazy-require`d and thus just doing a `require`
+             ;; outside wouldn't actually make the module
+             ;; available. The alternative would be to add an
+             ;; appropriate-phase `require` statically in a module
+             ;; that's non-dynamically depended on by
+             ;; `typed/racket`. That makes for confusing non-local
+             ;; dependencies, though, so we do it here.
+             (require typed-racket/utils/redirect-contract)
+             ;; We need a submodule for a for-syntax use of
+             ;; `define-runtime-module-path`:
+             (module #%contract-defs-reference racket/base
+               (require racket/runtime-path
+                        (for-syntax racket/base))
+               (define-runtime-module-path-index contract-defs-submod
+                 '(submod ".." #%contract-defs))
+               (provide contract-defs-submod))
+             (require (submod "." #%contract-defs-reference))
+             ;; Create the redirection funtion using a reference to
+             ;; the submodule that is friendly to `raco exe`:
+             (define mk-redirect
+               (make-make-redirect-to-contract contract-defs-submod)))
 
            ;; This submodule contains all the definitions of
            ;; contracted identifiers. For an exported definition like

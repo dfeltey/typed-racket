@@ -24,7 +24,7 @@
          (for-syntax racket/base racket/unit-exptime)
          (for-template racket/base
                        (private unit-literals)
-                       (typecheck internal-forms)))
+                       (submod "internal-forms.rkt" forms)))
 
 ;;  REMOVE LATER
 (require racket/format
@@ -525,17 +525,14 @@
       (check-below unit-expr-type unit-expected-type)
       (define-values (check new-init-depends)
         (match unit-expr-type
-          [(Unit: _ _ ini-deps ty) 
-           (values ty (set-intersect (map Signature-name ini-deps) compound-import-links))]
+          [(Unit: _ _ ini-deps ty)
+           (values ty (set-intersect (map Signature-name ini-deps) (map lookup-link-id compound-import-links)))]
           [_ (values #f null)]))
       (values check 
               (set-union seen-init-depends export-link-ids) 
               (set-union calculated-init-depends new-init-depends))))
-  
-  ;(printf "Compound forms to check: ~a\n" forms-to-check)
   (if check
-      ;; is this true? Does a compound always have no init-depends?
-      (-unit import-signatures export-signatures init-depends check)
+      (-unit import-signatures export-signatures (map lookup-signature init-depends) check)
       -Bottom))
 
 ;; syntax class for invoke-table

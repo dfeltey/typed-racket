@@ -21,6 +21,7 @@
                   [define-signature untyped-define-signature]
                   extends)
          (for-label "colon.rkt")
+         (submod "../typecheck/internal-forms.rkt" forms)
          (only-in "../../typed/racket/base.rkt" define-type)
          ;(only-in typed/racket/base define-type)
          (for-template (rep type-rep)))
@@ -78,6 +79,7 @@
         [member:sig-var-form
          (values (cons (syntax-e #'member.internal-form) members-raw) null)])))
   (values (reverse members-raw) (reverse aliases-raw)))
+
 
 ;; typed define-signature macro
 (define-syntax (define-signature stx)

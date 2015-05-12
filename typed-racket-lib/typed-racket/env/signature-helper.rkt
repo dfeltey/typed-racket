@@ -13,7 +13,7 @@
          racket/unit-exptime
          (only-in racket/set subset?)
          (for-template racket/base
-                       (typecheck internal-forms)))
+                       (submod "../typecheck/internal-forms.rkt" forms)))
 
 (provide parse-signature signature->bindings signatures->bindings)
 
@@ -31,13 +31,20 @@
      (define extends (get-extended-signature #'name #'super check? form))
      (define super-bindings (get-signature-mapping extends))
      (define new-bindings (map parse-signature-binding (syntax->list #'(binding ...))))
-     (define mapping (append super-bindings new-bindings))
+     (define pre-mapping (append super-bindings new-bindings))
 
      ;; Make sure a require/typed signature has bindings listed
      ;; that are consistent with its statically determined bindings
      (when check?
-       (check-signature-bindings #'name (map car mapping) form))
-          
+       (check-signature-bindings #'name (map car pre-mapping) form))
+
+     ;; require/typed signature bindings may not be in the correct order
+     ;; this fixes the ordering based on the static order determined
+     ;; by signature-members
+     (define mapping (if check?
+                         (fix-order #'name pre-mapping)
+                         pre-mapping))
+     (printf "Final Mapping: ~a\n" mapping)
      (values #'name (make-Signature #'name extends mapping))]))
 
 ;; check-signature-bindings : Identifier (Listof Identifier) -> Void
@@ -47,7 +54,9 @@
   (match-define-values (_ inferred-vars _ _) (signature-members name name))
   (define (id-set-diff s1 s2)
     (filter
-     (lambda (id) (not (member id s2 free-identifier=?)))
+     ;; is free-label-identifier=? the right thing here?
+     ;; free-template-identifier=? also seems to work
+     (lambda (id) (not (member id s2 free-label-identifier=?)))
      s1))
   (unless (and (empty? (id-set-diff vars inferred-vars))
                (empty? (id-set-diff inferred-vars vars)))
@@ -105,6 +114,16 @@
 ;; get-signature-mapping : (Option Signature) -> (Listof (Cons Id Type))
 (define (get-signature-mapping sig)
   (if sig (Signature-mapping sig) null))
+
+
+;; fix-order : id (listof (cons/c id type?)) -> (listof (cons/c id type?)
+;; Returns a reordered list of signature bindings to match the order given
+;; by signature-members
+(define (fix-order sig-id sig-bindings)
+  (match-define-values (_ members _ _) (signature-members sig-id sig-id))
+  (map
+   (lambda (id) (assoc id sig-bindings free-label-identifier=?))
+   members))
 
 
 

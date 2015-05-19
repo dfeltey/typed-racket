@@ -540,7 +540,12 @@
        (define lexical-type (lookup-type/lexical id))
        ;; type mismatch 
        (unless (subtype lexical-type sig-type)
-         (type-mismatch sig-type lexical-type "TODO: message about signature")))
+         (tc-error/fields "type mismatch in invoke-unit import"
+                            "expected" sig-type
+                            "given" lexical-type
+                            "imported variable" (syntax-e id)
+                            "imported signature" (syntax-e (Signature-name sig))
+                            #:delayed? #t)))
      (define result-type (Unit-result unit-expr-type))
      (match result-type
        [(Values: (list (Result: t _ _) ...))
@@ -548,11 +553,7 @@
        [(AnyValues: f) ManyUniv]
        ;; Should there be a ValuesDots case here?
        )]
-    [else 
-     (tc-error/expr #:stx unit-expr-stx
-                    #:return -Bottom
-                    "TODO: Didn't get a unit")]))
-
+    [else -Bottom]))
 
 ;; NEW
 (define (parse-and-check form expected)
@@ -575,16 +576,24 @@
      
      ;; Need to pass on to tc/letrec to ensure variables defined with the correct types
      (define export-signature-type-map
-       (apply append (map make-local-type-mapping exports-info)))
+       (map (lambda (si)
+              (cons (sig-info-name si) (make-local-type-mapping si)))
+            exports-info))
      
      ;; Thunk to pass to tc/letrec-values to check export subtyping
-     ;; Error messages can be improved
      (define (check-exports-thunk)
-       (for ([(id expected-type) (in-dict export-signature-type-map)])
+       (for* ([sig-mapping (in-list export-signature-type-map)]
+              [sig (in-value (car sig-mapping))]
+              [mapping (in-value (cdr sig-mapping))]
+              [(id expected-type) (in-dict mapping)])
          (define id-lexical-type (lookup-type/lexical id))
          (unless (subtype id-lexical-type expected-type)
-           (type-mismatch expected-type id-lexical-type
-                          "TODO: error message about export signature"))))
+           (tc-error/fields "type mismatch in unit export"
+                            "expected" expected-type
+                            "given" id-lexical-type
+                            "exported variable" (syntax-e id)
+                            "exported signature" (syntax-e sig)
+                            #:delayed? #t))))
      
      (define import-name-map
        (apply append (map

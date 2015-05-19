@@ -145,7 +145,6 @@
           (define top-level? (eq? (syntax-local-context) 'top-level))
           (for ([var (in-list vars)])
             (when (dict-has-key? unann-defs var)
-              ;; (printf "in here: ~a\n" #'(v ...))
               (free-id-table-remove! unann-defs var))
             (finish-register-type var top-level?))
           (stx-map make-def-binding #'(v ...) (attribute v.type))]
@@ -239,7 +238,6 @@
          (for ([member (in-list (syntax->list  import-ids))]
                [expected-type (in-list (map cdr (signature->bindings import-sig)))])
            (define lexical-type (lookup-type/lexical member))
-           ;(printf "new attempt lexical-type : ~a\n" lexical-type)
            (check-below lexical-type expected-type)))
        'no-type]
       ;; these forms we have been instructed to ignore
@@ -348,13 +346,6 @@
 
   ;; Register signatures once all type aliases and struct types
   ;; have been added to the type table
-  ;(printf "forms: ~a\n" forms)
-  ;(define sig (fourth forms))
-  ;(printf "sig-form: ~a\n" sig)
-  #;
-  (printf "(typed-define-signature? sig-form): ~a\n"
-          (typed-define-signature? sig))
-  ;(printf "signature-forms: ~a\n" signature-defs)
   (for ([sig-form signature-defs])
     (define-values (name sig) (parse-signature sig-form))
     (register-signature! name sig))

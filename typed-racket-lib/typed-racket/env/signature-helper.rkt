@@ -44,7 +44,6 @@
      (define mapping (if check?
                          (fix-order #'name pre-mapping)
                          pre-mapping))
-     (printf "Final Mapping: ~a\n" mapping)
      (values #'name (make-Signature #'name extends mapping))]))
 
 ;; check-signature-bindings : Identifier (Listof Identifier) -> Void

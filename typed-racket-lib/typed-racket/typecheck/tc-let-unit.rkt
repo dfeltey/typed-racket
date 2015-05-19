@@ -109,9 +109,6 @@
 ;; It is needed to typecheck units, and ensure that exported
 ;; variables are exported with the correct types
 (define (tc/letrec-values namess exprs body [expected #f] [check-thunk void])
-  ;(printf "namess: ~a\n" namess)
-  ;(printf "exprs: ~a\n" exprs)
-  ;(printf "letrec-values body: ~a\n" body)
   (let* ([names (stx-map syntax->list namess)]
          [orig-flat-names (apply append names)]
          [exprs (syntax->list exprs)])

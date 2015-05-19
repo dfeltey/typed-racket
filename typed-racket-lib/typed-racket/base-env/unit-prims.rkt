@@ -478,7 +478,7 @@
    (tr:unit:body-exp-def-type-property #'e 'expr)]
   [_ (printf "WTF\n")])
 
-;; This seems to do the correc thing
+
 (define-syntax (add-tags stx)
   (syntax-parse stx
     [(_) #'(begin)]
@@ -556,7 +556,6 @@
     [(_) #'(begin)]
     [(_ e)
      (define exp-e (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
-     (printf "EXPANDED-OLD: ~a\n" exp-e)
      (syntax-parse exp-e
        #:literal-sets (kernel-literals)
        ;; #:literals (begin define-values define-syntaxes)

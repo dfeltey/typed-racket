@@ -687,11 +687,8 @@
                         (sub init-rest init-rest*))
                    (and (not init-rest) (not init-rest*))))]
          [((Unit: imports exports init-depends t) (Unit: imports* exports* init-depends* t*))
-          (and ;(printf "check-sub-imports: ~a\n" (check-sub-signatures? imports* imports))
-               (check-sub-signatures? imports* imports)
+          (and (check-sub-signatures? imports* imports)
                (check-sub-signatures? exports exports*)
-               ;; init depends are checked at runtime, so need this
-               ;; for proper subtyping check, this matches the model
                (check-sub-signatures? init-depends* init-depends)
                (subtype-seq A0
                             (subtype* t t*)))]

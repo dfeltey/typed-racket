@@ -87,16 +87,13 @@
     [(_ sig-name:id super-form:extends-form forms:signature-forms)
      (define-values (members aliases)
        (process-signature-forms (syntax->list #'forms)))
-     ;(printf "members: ~a\n" members)
-     
      (define erased-members (map car members))
-     
      #`(begin
-           #,(ignore (quasisyntax/loc stx
-                       (untyped-define-signature sig-name #,@(attribute super-form.form)
-                                                 (#,@erased-members))))
-           #,(internal (quasisyntax/loc stx
-                         (define-signature-internal sig-name super-form.internal-form
-                           (#,@members)
-                           ;; no need to further check parent information
-                           #f))))]))
+         #,(ignore (quasisyntax/loc stx
+                     (untyped-define-signature sig-name #,@(attribute super-form.form)
+                                               (#,@erased-members))))
+         #,(internal (quasisyntax/loc stx
+                       (define-signature-internal sig-name super-form.internal-form
+                         (#,@members)
+                         ;; no need to further check parent information
+                         #f))))]))

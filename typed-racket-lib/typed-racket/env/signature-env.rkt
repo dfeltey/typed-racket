@@ -56,14 +56,3 @@
      (printf "ID: ~a\n" id)
      (printf "Sig: ~a\n" sig)))
   (printf "End Print Signature Env\n"))
-
-;; For testing units that import/export signatures
-#;
-(define-syntax (with-temporary-signatures stx)
-  (syntax-parse stx
-    [(_ ([x:id sig] ...) expr ...)
-     #'(let ()
-         (define temp-signature-env signature-env)
-         (set! (signature-env (make-free-id-table)))
-         (register-signature! #'x sig) ...
-         (begin0 (begin expr ...) (set! signature-env temp-signature-env)))]))

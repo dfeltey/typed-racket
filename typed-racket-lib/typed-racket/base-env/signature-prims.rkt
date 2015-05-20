@@ -46,7 +46,10 @@
     (pattern [name:id : type]
              #:with internal-form #'(name type)
              #:with erased #'name))
-  
+
+  ;; Preliminary support for type definitions in signatures
+  ;; The form is allowed in signature definitions, but currently
+  ;; is ignored
   (define-syntax-class sig-type-form
     #:literals (define-type)
     (pattern (define-type t ty)

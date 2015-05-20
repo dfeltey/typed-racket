@@ -136,7 +136,6 @@
                (or (lookup rn) rn))
              #:with sig-name #'sig.sig-name))
   
-  
   ;; need lexical signature vars to error with duplicate type annotations
   (define (signatures-vars stx)
     (define (signature-vars sig-id)
@@ -146,57 +145,25 @@
     (apply append (map signature-vars (syntax->list stx))))
   
   ;; extract vars from a signature with the correct syntax marks
-  ;; I have no idea why this works, or is necessary
   ;; TODO: this is probably not general enough and will need to be modified
-  ;; to deal with prefix/rename when those are implemented for TR units
   (define (get-signature-vars sig-id)
     (define-values (_0 vars _2 _3)
       ;; TODO: give better argument for error-stx
       (signature-members sig-id sig-id))
-
     (map
      ;(unitify-id sig-id)
      syntax-local-introduce
      vars))
   
-  ;; No idea what this does
+  ;; I still don't understand how this works, but it seems to sometimes be necessary to
+  ;; get the correct context on signature-bound identifiers
   (define (unitify-id sig-id)
     (lambda (id)
       (syntax-local-introduce
        (syntax-local-get-shadower
         ((lambda (id-inner)
            (syntax-local-introduce
-            ((syntax-local-make-delta-introducer sig-id) id-inner))) id)))))
- 
-  
-  (define (get-signatures-vars stx)
-    (define sig-ids (syntax->list stx))
-    (apply append (map (lambda (sig-id) (get-signature-vars sig-id)) sig-ids)))
-
-  ;; same trick as for classes to recover names
-  
- 
-  (define (make-annotated-table names)
-    (with-syntax ([(name ...) 
-                   (map
-                    (lambda (id)
-                      (syntax-property id 'sig-id id))
-                    names)])
-      #`(let-values ((()
-                      (begin 
-                        (list name ...)
-                        (values))))
-          (void))))
-  
-  
-  (define (make-unit-signature-table imports
-                                     exports
-                                     init-depends)
-    
-    #`(unit-internal 
-       (#:imports #,@imports)
-       (#:exports #,@exports)
-       (#:init-depends #,@init-depends))))
+            ((syntax-local-make-delta-introducer sig-id) id-inner))) id))))))
 
 
 ;; Abstraction for creating trampolining macros
@@ -253,17 +220,10 @@
            [(_ arg ... (~var exprs (rest-form #'name #`(arg ...))))
             #'exprs.trampoline-form]))]))
 
-    
-   
-
-
-
 
 ;; Typed macro for define-values/invoke-unit
 ;; This has to be handled specially because they types of
 ;; the defined values must be registered in the environment
-;;
-;; TODO: prefixes/etc on import/exports
 (define-for-syntax (imports/members sig-id)
   (match-define-values (_ (list imp-mem ...) _ _)
                        (signature-members sig-id sig-id))
@@ -309,8 +269,6 @@
                        (untyped-define-values/invoke-unit unit-expr
                                                           (import isig ...)
                                                           (export esig ...))))))]))
-
-
 (begin-for-syntax
   (define (id-set-diff s1 s2)
     (filter
@@ -371,8 +329,6 @@
              #:with last-id 
              (local-expand #'uid-last (syntax-local-context) (kernel-form-identifier-list)))))
 
-;; No typechecking here because the ids are guarenteed to be units
-;; at expansion-time
 (define-syntax (define-values/invoke-unit/infer stx)
   (syntax-parse stx
     [dviui:define/invoke/infer-form
@@ -393,8 +349,6 @@
     (pattern (import sig:id ...)
              #:attr untyped-import #'((import sig ...))
              #:with imports #'((quote-syntax sig) ...))))
-
-
 
 
 ;; need to do extra work to make this work with the existing
@@ -432,80 +386,6 @@
                 #t)
              #,@(attribute imports.untyped-import)))))))]))
 
-
-
-
-
-
-
-;; helpful definitions for later typechecking
-(define-values-for-syntax (access-table add-table)
-  (let* ([key (gensym)]
-         [get-table (lambda (stx) (syntax-property stx key))]
-         [set-table (lambda (stx table) (syntax-property stx key table))])
-    (values get-table set-table)))
-
-(define-for-syntax (type-table-ref table id)
-  (assoc id table free-identifier=?))
-
-
-
-;; start of rewrite to use define-syntax/syntax-local-value as a 
-;; better communication channel inside the unit macro
-;;
-;; Also moving away from syntax properties as places to store type information
-;; 2 Feautures to help fix this
-;;   1. Indexing unit imports
-;;   2. inserting define-values names into the expression needed to type check
-;;
-
-
-
-
-
-;; This is the working version use this!!!
-;; This macro is broken ...???
-#;
-(define-trampolining-macro add-tags
-  [(define-values (name:id ...) rhs)
-   #`(define-values (name ...)
-       #,(tr:unit:body-exp-def-type-property
-          #'(#%expression
-             (begin
-               (void (lambda () name) ...)
-               rhs))
-          'def/type))]
-  [e 
-   (printf "ADD-TAGS: ~a\n" #'e)
-   (tr:unit:body-exp-def-type-property #'e 'expr)]
-  [_ (printf "WTF\n")])
-
-
-(define-syntax (add-tags stx)
-  (syntax-parse stx
-    [(_) #'(begin)]
-    [(_ e)
-     (define exp-e (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
-     (syntax-parse exp-e
-       #:literals (begin define-values define-syntaxes)
-       [(begin b ...)
-        #'(add-tags b ...)]
-       [(define-syntaxes (name:id ...) rhs:expr) 
-        exp-e]
-       [(define-values (name:id ...) rhs)
-        #`(define-values (name ...)
-            #,(tr:unit:body-exp-def-type-property
-               #'(#%expression
-                  (begin
-                    (void (lambda () name) ...)
-                    rhs))
-               'def/type))]
-       [_
-        (tr:unit:body-exp-def-type-property exp-e 'expr)])]
-    [(_ e ...)
-     #'(begin (add-tags e) ...)]))
-
-
 ;; This table implementation is going to break when only/except are allowed in
 ;; typed units, the indexing strategy won't work in that case
 (define-for-syntax (make-signature-local-table imports import-renamers 
@@ -532,6 +412,29 @@
          (void)))
    #t))
 
+(define-syntax (add-tags stx)
+  (syntax-parse stx
+    [(_) #'(begin)]
+    [(_ e)
+     (define exp-e (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
+     (syntax-parse exp-e
+       #:literals (begin define-values define-syntaxes)
+       [(begin b ...)
+        #'(add-tags b ...)]
+       [(define-syntaxes (name:id ...) rhs:expr)
+        exp-e]
+       [(define-values (name:id ...) rhs)
+        #`(define-values (name ...)
+            #,(tr:unit:body-exp-def-type-property
+               #'(#%expression
+                  (begin
+                    (void (lambda () name) ...)
+                    rhs))
+               'def/type))]
+       [_
+        (tr:unit:body-exp-def-type-property exp-e 'expr)])]
+    [(_ e ...)
+     #'(begin (add-tags e) ...)]))
 
 (define-syntax (unit stx)
   (syntax-parse stx
@@ -552,27 +455,6 @@
                                                       #'init-depends.names)
                         (add-tags e ...)))))]))
 
-#;
-(define-syntax (process-define-unit stx)
-  (syntax-parse stx
-    [(_) #'(begin)]
-    [(_ e)
-     (define exp-e (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
-     (syntax-parse exp-e
-       #:literal-sets (kernel-literals)
-       ;; #:literals (begin define-values define-syntaxes)
-       [(begin b ...)
-        #'(process-define-unit b ...)]
-       [(define-syntaxes (name:id ...) rhs:expr)
-        exp-e]
-       [(define-values (name:id ...) rhs)
-        #`(define-values (name ...)
-            #,(ignore
-               (tr:unit
-                #`rhs)))]
-       [_ exp-e])]
-    [(_ e ...)
-     #'(begin (process-define-unit e) ...)]))
 
 (define-trampolining-macro process-define-unit
   [(define-values (name:id ...) rhs)
@@ -580,7 +462,6 @@
        #,(ignore
           (tr:unit
            #'rhs)))])
-
 
 ;; define-unit macro
 (define-syntax (define-unit stx)
@@ -602,8 +483,6 @@
                                         (attribute exports.renamers)
                                         #'init-depends.names)
           (add-tags e ...))))]))
-
-
 
 
 ;; Syntax classes and macro for typed compound-unit
@@ -677,11 +556,6 @@
              #:with sig-qs #'(quote-syntax sig-id)
              #:with link-map-elem #'(link-id sig-id))))
 
-
-;; I think it would be better/make type checking easier
-;; to pull all of the sig-name/link-name pairs to outside
-;; of the compound form in ordet to construct the mapping
-;; most easily at typecheck time
 (define-syntax (compound-unit stx)
   (syntax-parse stx
     [cu:compound-unit-form
@@ -702,7 +576,6 @@
                 rhs))
            #t)))])
 
-
 (define-syntax (define-compound-unit stx)
   (syntax-parse stx
     [(_ uid 
@@ -722,7 +595,6 @@
                                       links.untyped-links)))]))
 
 ;; compound-unit/infer
-
 (begin-for-syntax
   (define-syntax-class compound-infer-imports
     #:literals (import)
@@ -749,7 +621,6 @@
              #:attr bound-sig-ids (apply append (map syntax->list
                                                      (syntax->list
                                                       #'(lnk.bound-sig-ids ...))))
-             
              #:with links-untyped 
              #'(link lnk.linkage-stx ...)
              #:attr link-table
@@ -766,13 +637,9 @@
   (define-syntax-class infer-link-export
     (pattern link-or-sig-id:id))
   
-  ;; allowing the unit-id below to be exprs
-  ;; so that the untyped macro can give better error
-  ;; reporting
-  
   (define-syntax-class infer-linkage-decl
     (pattern ((lb:link-binding ...)
-              unit-id:id ;; can this be an expr without giving a bad error message
+              unit-id:id
               link-id:id ...)
              #:with bound-link-ids #'(lb.link-qs ...)
              #:with bound-sig-ids #'(lb.sig-qs ...)
@@ -788,8 +655,7 @@
                  (match-define-values ((list (cons _ imports) ...) (list (cons _ exports) ...))
                                       (unit-static-signatures #'unit-id #'unit-id))
                  (define runtime-id 
-                   (local-expand #'unit-id (syntax-local-context) (kernel-form-identifier-list))
-                   #;(unit-static-runtime-id #'unit-id #'unit-id))
+                   (local-expand #'unit-id (syntax-local-context) (kernel-form-identifier-list)))
                  (tr:unit:compound:expr-property
                   #`(#%expression
                      (begin
@@ -806,7 +672,7 @@
                                      exports))
                        (void (quote-syntax #,runtime-id))))
                   'infer))))
-    (pattern unit-id:id ;; can we make this an expr without giving a bad error message
+    (pattern unit-id:id
              #:with bound-link-ids #'()
              #:with bound-sig-ids #'()
              #:with linkage-stx
@@ -816,8 +682,7 @@
                (match-define-values ((list (cons _ imports) ...) (list (cons _ exports) ...))
                                     (unit-static-signatures #'unit-id #'unit-id))
                (define runtime-id
-                 (local-expand #'unit-id (syntax-local-context) (kernel-form-identifier-list))
-                 #;(unit-static-runtime-id #'unit-id #'unit-id))
+                 (local-expand #'unit-id (syntax-local-context) (kernel-form-identifier-list)))
                (tr:unit:compound:expr-property
                 #`(#%expression
                    (begin
@@ -840,8 +705,6 @@
 ;;   suggest that imports are filled in from the 
 ;;   static information bound to the unit-ids
 ;;   but simple tests don't seem to confirm this
-
-
 (define-syntax (compound-unit/infer stx)
   (syntax-parse stx
     [(_ 
@@ -860,20 +723,11 @@
             (void #,@#'imports.import-link-ids) 
             exports.export-links-or-sigs
             #,(attribute links.link-table)
-            ;; NOTE:
-            ;;  No reason to alter the syntax at all
-            ;;  since nothing seems recoverable from the
-            ;;  expansion
             (untyped-compound-unit/infer
              imports
              exports 
              links))))
        'infer))]))
-
-
-;; This doesn't work because I can't figure out how to
-;; get the identifiers to which the units are bound 
-;; after expansion is finished
 
 (define-syntax (define-compound-unit/infer stx)
   (syntax-parse stx
@@ -883,18 +737,13 @@
         links:compound-infer-links)
      (quasisyntax/loc stx
        (process-define-compound-unit
-        
         (void #,@#'imports.import-link-ids
               #,@(attribute links.bound-link-ids))
-        
         (void #,@#'imports.import-sig-ids
               #,@(attribute links.bound-sig-ids))
         (void #,@#'imports.import-link-ids) 
         exports.export-links-or-sigs
-        
         #,(attribute links.link-table)
-        
-        
         (untyped-define-compound-unit/infer unit-name
                                             imports
                                             exports

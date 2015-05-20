@@ -378,20 +378,6 @@
     (and v (cdr v))))
 
 
-;; define-values/invoke-unit handling
-(define (check-define-values/invoke-unit form [expected #f])
-  (define expected-type
-    (match expected
-      [(tc-result1: type) (resolve type)]
-      [_ #f]))
-  (ret (parse-and-check-define-values/invoke-unit form expected-type)))
-
-(define (parse-and-check-define-values/invoke-unit form expected)
-  (define forms
-    (trawl-for-property form tr:unit:def-val/inv-unit-expr-property))
-  -Void)
-
-
 ;; Syntax Option<TCResults> -> TCResults
 ;; Type-check a unit form
 (define (check-unit form [expected #f])
@@ -459,8 +445,6 @@
   
   (define import-signatures (map lookup-signature (map lookup-link-id compound-import-links)))
   (define export-signatures (map lookup-signature compound-export-sigs))
-  
-  
   
   (define-values (check _ init-depends)
     (for/fold ([check -Void]
@@ -555,7 +539,7 @@
        )]
     [else -Bottom]))
 
-;; NEW
+
 (define (parse-and-check form expected)
   (syntax-parse form
     [u:unit-expansion
@@ -640,11 +624,9 @@
      ;;       the body of the unit if not already specified in the body
      ;;       This is more of a pragmatic feature than one required to typecheck
      ;;       but it would make porting programs somewhat simpler
-
-
-     ;; FIXME: adding these to the lexical scope doesn't seem to work, I think
-     ;;        they need to be turned into real annotations that are inserted
-     ;;        into the tc/letrec-values call
+     ;;       Currently adding these to the lexical scope doesn't seem to work, I think
+     ;;       they need to be turned into real annotations that are inserted
+     ;;       into the tc/letrec-values call
      
      (define signature-annotations (arrowize-mapping local-sig-type-map))
      (define unit-type
@@ -656,86 +638,16 @@
                                        #`(#,@expression-forms)
                                        #f
                                        check-exports-thunk))
-         (define annotations (filter unit-type-annotation? annotation/definition-forms))
-         (define definitions
-           (map process-unit-body-definition
-                (filter-not unit-type-annotation? annotation/definition-forms)))
-         ;; TODO:
-         ;; 1. add types from `import` signatures to the environment
-         ;; 2. process annotations/add to lexical environment
-         ;; 3. infer types from definitions
-         ;; 4. type check definitions
-         ;; 5. type check expressions
-         ;; 6. determine `invoke` type
-         ;; 7. correctly handle subtyping with exports
-
          (define invoke-type
            (match res
              [(tc-results: tps) (-values tps)]))
          (-unit import-signatures
                 export-signatures
-           init-depend-signatures
-           invoke-type)))
+                init-depend-signatures
+                invoke-type)))
      unit-type]))
 
-
-(define (unit-type-annotation? stx)
-  (syntax-parse stx
-    [s:unit-body-annotation #t]
-    [_ #f]))
-
-;; Syntax -> (values (listof identifier?) Syntax)
-;; GIVEN: syntax representing a unit body definition
-;; RETURNS: the variables defined by the definition
-;;          and the syntax of the definition's body
-(define (process-definition stx)
-  (syntax-parse stx
-    [d:unit-body-definition
-     (values (attribute d.vars) #'d.body)]))
-
-;; process-unit-body-definition :: Syntax -> (Pairof (Listof Identifier) Syntax)
-;; GIVEN: the tagged syntax for a unit body definition
-;; RETURNS: a list of pairs of the variables being defined
-;;          and the syntax of the body expression
-(define (process-unit-body-definition stx)
-  (syntax-parse stx
-    [d:unit-body-definition
-     (cons (attribute d.vars) #'d.body)]))
-
-
-;; Syntax Option<Type> -> Type
-
-(define (ann->dict stxs)
-  (for/list ([stx stxs])
-    (syntax-parse stx
-      [:unit-body-annotation
-       (cons #'name (parse-type #'type))])))
-
-(define (parse-local-names stxs)
-  (for/list ([stx stxs])
-    (syntax-parse stx
-      #:literals (#%plain-app)
-      [(#%plain-app name:id)
-       (cons #'name (syntax-property stx 'sig-id))])))
-
-
-(define (ref dict id)
-  (let ([val (assoc id dict free-identifier=?)])
-    (if val (cdr val) #f)))
-
-;; AList AList -> AList
-;; GIVEN: two association lists
-;; RETURNS: their composition
-(define (compose-mappings m1 m2)
-  (for/list ([kv (in-list m1)])
-    (define key (car kv))
-    (define val (cdr kv))
-    (cons key
-          ;; would be nice to make this an arrow type
-          ;; and parse it here instead of above ...
-          (cdr (assoc val m2 free-identifier=?)))))
-
-;; copied from check-class-unit.rkt
+;; extended version of the function in check-class-unit.rkt
 ;; Syntax (Syntax -> Any) -> Listof<Syntax>
 ;; Look through the expansion of the unit macro in search for
 ;; syntax with some property (e.g., definition bodies and expressions)

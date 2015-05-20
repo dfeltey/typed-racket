@@ -27,7 +27,6 @@
        (begin (quote (define-signature-internal name super (binding ...) check))
               (#%plain-app values)))
      (define check? (syntax->datum #'check))
-     
      (define extends (get-extended-signature #'name #'super check? form))
      (define super-bindings (get-signature-mapping extends))
      (define new-bindings (map parse-signature-binding (syntax->list #'(binding ...))))
@@ -113,7 +112,6 @@
 ;; get-signature-mapping : (Option Signature) -> (Listof (Cons Id Type))
 (define (get-signature-mapping sig)
   (if sig (Signature-mapping sig) null))
-
 
 ;; fix-order : id (listof (cons/c id type?)) -> (listof (cons/c id type?)
 ;; Returns a reordered list of signature bindings to match the order given

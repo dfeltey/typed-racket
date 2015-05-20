@@ -74,26 +74,13 @@
   (tr:class:local-table tr:class:local-table)
   (tr:class:name-table tr:class:name-table)
   (tr:class:def tr:class:def)
-  ;; unit properties
   (tr:unit tr:unit #:mark)
-  (tr:unit:sig-id tr:unit:sig-id)
-  (tr:unit:local-table tr:unit:local-table)
   (tr:unit:index-table tr:unit:index-table)
   (tr:unit:body-exp-def-type tr:unit:body-exp-def-type)
-  (tr:unit:annotation tr:unit:annotation)
-  (tr:unit:sig-vars tr:unit:sig-vars)
-  (tr:unit:annotated tr:unit:annotated)
-  ;; invoke properties
   (tr:unit:invoke tr:unit:invoke #:mark)
   (tr:unit:invoke:expr tr:unit:invoke:expr)
-  (tr:unit:definition tr:unit:definition)
-  ;; support infer/non-infer forms with the same property
   (tr:unit:compound tr:unit:compound)
   (tr:unit:compound:expr tr:unit:compound:expr)
-  ;; properties for handling define-values/invoke-unit
   (tr:unit:def-val/inv-unit tr:unit:def-val/inv-unit #:mark)
-  (tr:unit:def-val/inv-unit-expr tr:unit:def-val/inv-unit-expr)
-  ;; infer forms
-  
-  )
+  (tr:unit:def-val/inv-unit-expr tr:unit:def-val/inv-unit-expr))
 

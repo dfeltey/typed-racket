@@ -59,7 +59,8 @@
           "base-types.rkt"
           "base-types-extra.rkt"
           (for-label "colon.rkt")
-          (for-template (rep type-rep)))
+          (for-template (rep type-rep))
+          (submod "../typecheck/internal-forms.rkt" forms))
 
 (begin-for-syntax
   (define-literal-set colon #:for-label (:))
@@ -300,6 +301,7 @@
            (: temp (Unit (import isig.sig-name ...)
                          (export esig.sig-name ...)
                          ;; FIXME this needs to be AnyValues
+                         ;; FIXME: init-depends
                            Any))
            (define temp unit-expr)
            

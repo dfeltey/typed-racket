@@ -117,13 +117,6 @@
       
       ;; handle top-level define-values/invoke-unit
       [dviu:typed-define-values/invoke-unit
-       ;(define export-signatures (syntax->list #'(dviu.export.sig ...)))
-       ;(define exports-type-mapping (signatures->bindings export-signatures))
-       #;
-       (for ([(id ty) (in-dict exports-type-mapping)])
-       (register-type-if-undefined id ty))
-       ;; FIXME: should these definitions be added to this list?
-       
        (for ([export-sig (in-list (syntax->list #'(dviu.export.sig ...)))]
              [export-ids (in-list (syntax->list #'(dviu.export.members ...)))])
          (for ([id (in-list (syntax->list  export-ids))]

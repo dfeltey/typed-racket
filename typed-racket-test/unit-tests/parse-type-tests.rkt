@@ -379,8 +379,13 @@
     (make-Unit null null null (-values (list -String)))]
    [(Unit (import) (export) String)
     (make-Unit null null null (-values (list -String)))]
-   [FAIL (Unit (import) (export) (init-depend))]
-   [FAIL (Unit (import) (export))]
+   [(Unit (import) (export) (init-depend))
+    (make-Unit null null null (-values (list -Void)))]
+   [(Unit (import) (export))
+    (make-Unit null null null (-values (list -Void)))]
+   [FAIL (Unit (export) String)]
+   [FAIL (Unit (import) String)]
+   [FAIL (Unit (init-depend) String)]
    ))
 
 ;; FIXME - add tests for parse-values-type, parse-tc-results

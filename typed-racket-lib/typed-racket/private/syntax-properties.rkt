@@ -80,5 +80,6 @@
   (tr:unit:invoke tr:unit:invoke #:mark)
   (tr:unit:invoke:expr tr:unit:invoke:expr)
   (tr:unit:compound tr:unit:compound)
-  (tr:unit:compound:expr tr:unit:compound:expr))
+  (tr:unit:compound:expr tr:unit:compound:expr)
+  (tr:unit:from-context tr:unit:from-context))
 

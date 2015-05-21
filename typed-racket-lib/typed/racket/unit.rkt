@@ -11,7 +11,8 @@
                     define-values/invoke-unit
                     define-values/invoke-unit/infer
                     compound-unit/infer
-                    define-compound-unit/infer)
+                    define-compound-unit/infer
+                    unit-from-context)
          typed-racket/base-env/unit-prims
          typed-racket/base-env/signature-prims)
 
@@ -26,4 +27,5 @@
          define-values/invoke-unit/infer
          compound-unit/infer
          define-compound-unit/infer
+         unit-from-context
          (all-from-out racket/unit))

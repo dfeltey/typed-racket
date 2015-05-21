@@ -130,6 +130,8 @@
        (check-invoke-unit form expected)]
       [stx:tr:unit:compound^
        (check-compound-unit form expected)]
+      [stx:tr:unit:from-context^
+       (check-unit-from-context form expected)]
       [stx:exn-handlers^
        (register-ignored! form)
        (check-subforms/with-handlers form expected) ]

@@ -3,7 +3,7 @@
 ;; Primitive forms for units/signatures
 
 (provide ;define-signature
-         unit 
+         unit
          define-unit
          compound-unit 
          define-compound-unit
@@ -12,7 +12,8 @@
          invoke-unit
          invoke-unit/infer
          define-values/invoke-unit
-         define-values/invoke-unit/infer)
+         define-values/invoke-unit/infer
+         unit-from-context)
 
 
 (require  "../utils/utils.rkt"
@@ -49,6 +50,7 @@
                    [define-values/invoke-unit/infer untyped-define-values/invoke-unit/infer]
                    [compound-unit/infer untyped-compound-unit/infer]
                    [define-compound-unit/infer untyped-define-compound-unit/infer]
+                   [unit-from-context untyped-unit-from-context]
                    extends
                    import
                    export
@@ -329,14 +331,25 @@
              #:with last-id 
              (local-expand #'uid-last (syntax-local-context) (kernel-form-identifier-list)))))
 
+;; This is currently broken, I'm not entirely sure why though
+;; need to debug to figure out why export types are not registered
+
+;; Part of the problem WAS not processing the exports, but that should be fixed now
+;; in the factorial example, no imports OR exports seem to be inferred
+;; so no values are ever put in th environment for typechecking
 (define-syntax (define-values/invoke-unit/infer stx)
   (syntax-parse stx
     [dviui:define/invoke/infer-form
+     (printf "define-values/invoke-unit/infer syntax: ~a\n"
+             (quasisyntax/loc stx
+                       (define-values/invoke-unit-internal
+                         (#,@(map imports/members (attribute dviui.inferred-imports)))
+                         (#,@(process-dv-exports (attribute dviui.inferred-exports))))))
      #`(begin
          #,(internal (quasisyntax/loc stx
                        (define-values/invoke-unit-internal
                          (#,@(map imports/members (attribute dviui.inferred-imports)))
-                         (#,@(attribute dviui.inferred-exports)))))
+                         (#,@(process-dv-exports (attribute dviui.inferred-exports))))))
          #,(ignore (quasisyntax/loc stx dviui.untyped-stx)))]))
 
 ;; invoke-unit macro
@@ -748,6 +761,19 @@
                                             imports
                                             exports
                                             links)))]))
+
+;; Ignoring renames/prefix/etc for now
+(define-syntax (unit-from-context stx)
+  (syntax-parse stx
+    [(_ sig:id)
+     (ignore
+      (tr:unit:from-context-property
+       (quasisyntax/loc stx
+         (#%expression
+          (begin
+            (void (quote-syntax sig))
+            (untyped-unit-from-context sig))))
+       #t))]))
 
 
 

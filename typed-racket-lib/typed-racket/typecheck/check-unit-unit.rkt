@@ -12,6 +12,7 @@
          syntax/id-table
          syntax/parse
          syntax/stx
+         syntax/strip-context
          racket/unit-exptime
          "signatures.rkt"
          (private parse-type syntax-properties type-annotation)
@@ -417,6 +418,30 @@
       [(tc-result1: type) (resolve type)]
       [_ #f]))
   (ret (parse-and-check-compound form expected-type)))
+
+(define (check-unit-from-context form [expected #f])
+  (define expected-type
+    (match expected
+      [(tc-result1: type) (resolve type)]
+      [_ #f]))
+  (ret (parse-and-check-unit-from-context form expected-type)))
+
+(define (parse-and-check-unit-from-context form expected-type)
+  (syntax-parse form
+    #:literals (#%expression begin void quote-syntax #%plain-app)
+    [(#%expression
+      (begin (#%plain-app void (quote-syntax sig-id:id)) unit))
+     (define sig (lookup-signature #'sig-id))
+     (define valid?
+       (for/and ([(-id sig-type) (in-dict (Signature-mapping sig))])
+         (define id (replace-context #'sig-id -id))
+         (define lexical-type (lookup-type/lexical id))
+         (if (subtype lexical-type sig-type)
+             #t
+             (begin (type-mismatch sig-type lexical-type) #f))))
+     (if valid?
+         (-unit null (list sig) null (-values (list -Void)))
+         -Bottom)]))
 
 (define (parse-and-check-compound form expected-type)
   (define-values (init-link-mapping compound-import-links compound-export-sigs infer-table compound-expr)

@@ -224,6 +224,8 @@
        (tc-expr #'stx)]
       [stx:tr:unit:compound^
        (tc-expr #'stx)]
+      [stx:tr:unit:from-context^
+       (tc-expr #'stx)]
       ;; This may not make sense since define-values/invoke-unit isn't really an expression
       [dviu:typed-define-values/invoke-unit
        (for ([import-sig (in-list (syntax->list #'(dviu.import.sig ...)))]

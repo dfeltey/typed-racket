@@ -5,7 +5,7 @@
 ;; #lang racket/unit
 
 (require typed/racket/unit
-         (only-in typed/racket/base [#%module-begin #%module-begin-typed])
+         (rename-in typed/racket/base [#%module-begin #%module-begin-typed])
          (for-syntax racket/base
                      syntax/kerncase))
 

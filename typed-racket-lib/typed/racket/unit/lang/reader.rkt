@@ -1,6 +1,6 @@
 #lang s-exp syntax/module-reader
 
-typed/racket/unit
+typed/racket/unit/lang
 
 #:read r:read
 #:read-syntax r:read-syntax

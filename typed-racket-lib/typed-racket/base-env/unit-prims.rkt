@@ -463,21 +463,10 @@
            (compound-unit imports:compound-imports
                           exports:compound-exports
                           links:compound-links))
-     #:attr untyped-stx
-     (ignore
-      (tr:unit:compound-property
-       (quasisyntax/loc #'stx
-         (#%expression
-          (begin
-            (void #,@#'imports.import-link-ids #,@(attribute links.bound-link-ids))
-            (void #,@#'imports.import-sig-ids #,@(attribute links.bound-sig-ids))
-            (void #,@#'imports.import-link-ids)
-            exports.export-link-ids
-            (void)
-            (untyped-compound-unit imports
-                                   exports
-                                   links.untyped-links))))
-       #t))))
+     #:attr import-links (attribute imports.import-tags)
+     #:attr unit-export-links (attribute links.all-export-links)
+     #:attr unit-import-links (attribute links.all-import-links)
+     #:attr untyped-stx #'(untyped-compound-unit imports exports links)))
   (define-syntax-class compound-imports
     #:literals (import)
     (pattern (import lb:link-binding ...)
@@ -485,7 +474,8 @@
              #'(lb.link-qs ...)
              #:with import-sig-ids
              #'(lb.sig-qs ...)
-             #:with import-link-map #'(lb.link-map-elem ...)))
+             #:with import-link-map #'(lb.link-map-elem ...)
+             #:attr import-tags (syntax->list #'(lb.link-id ...))))
   (define-syntax-class compound-exports
     #:literals (export)
     (pattern (export l:id ...)
@@ -494,6 +484,8 @@
   (define-syntax-class compound-links
     #:literals (link)
     (pattern (link ld:linkage-decl ...)
+             #:attr all-export-links (map syntax->list (syntax->list #'(ld.exported-keys ...)))
+             #:attr all-import-links (map syntax->list (syntax->list #'(ld.imported-keys ...)))
              #:with untyped-links
              #'(link ld.untyped-link-decl ...)
              #:attr bound-link-ids (apply append (map syntax->list 
@@ -506,6 +498,8 @@
     (pattern ((lb:link-binding ...)
               unit-expr:expr
               link-id:id ...)
+             #:attr exported-keys #'(lb.link-id ...)
+             #:with imported-keys #'(link-id ...)
              #:with bound-link-ids #'(lb.link-qs ...)
              #:with bound-sig-ids #'(lb.sig-qs ...)
              #:with untyped-link-decl
@@ -528,7 +522,27 @@
 (define-syntax (compound-unit stx)
   (syntax-parse stx
     [cu:compound-unit-form
-     (attribute cu.untyped-stx)]))
+     (define table
+       (make-immutable-free-id-table
+        (append 
+         (map cons
+              (attribute cu.import-links)
+              (map (compose gensym syntax-e) (attribute cu.import-links)))
+         (map cons
+              (flatten (attribute cu.unit-export-links))
+              (map (compose gensym syntax-e) (flatten (attribute cu.unit-export-links)))))))
+     (define imports (map (λ (id) (free-id-table-ref table id)) (attribute cu.import-links)))
+     (define units-exports
+       (map
+        (λ (lst) (map (λ (id) (free-id-table-ref table id)) lst))
+        (attribute cu.unit-export-links)))
+     (define units-imports
+       (map
+        (λ (lst) (map (λ (id) (free-id-table-ref table id)) lst))
+        (attribute cu.unit-import-links)))
+     (ignore (tr:unit:compound-property
+              (quasisyntax/loc stx #,(attribute cu.untyped-stx))
+              (list imports units-exports units-imports)))]))
 
 (define-trampolining-macro (process-define-compound-unit links sigs im ex infer)
   [(define-values (name:id ...) rhs)

@@ -46,21 +46,18 @@
          (:-internal var:id t))
         (#%plain-app values))))
    #:attr fixed-form #`(begin
-                         (quote
-                          (:-internal var-int t))
+                         (quote-syntax (:-internal var-int t) #:local)
                          (#%plain-app values))
    #:attr name #'var
    ;; Needed to substiture the internal renaming of exported definitions
    ;; in unit bodies in order to ensure that the annotation is applied
    ;; to the correct identifier
    #:attr letrec-form #`(begin
-                          (quote
-                           (:-internal var t))
+                          (quote-syntax (:-internal var t) #:local)
                           (#%plain-app values))
    #:attr subst-annotation (lambda (id)
                              #`(begin
-                                 (quote
-                                  (:-internal #,id t))
+                                 (quote-syntax (:-internal #,id t) #:local)
                                  (#%plain-app values)))))
 
 (define-syntax-class unit-body-definition
@@ -203,8 +200,8 @@
             import-vector:sig-vector
             export-vector:sig-vector
             list-dep:init-depend-list
-            (letrec-syntaxes+values (_ ...) (_ ...)
-              (letrec-syntaxes+values (_ ...) (_ ...)
+            (let-values (_ ...)
+              (let-values (_ ...)
                 (#%expression
                  (#%plain-lambda ()
                    (let-values (((export-temp-id:id) _) ...)
@@ -238,21 +235,37 @@
 ;; Compound Unit syntax classes
 (define-syntax-class compound-unit-expansion
   #:literal-sets (kernel-literals)
-  #:literals (void)
-  (pattern (#%expression
-            (begin
-              (#%plain-app void (quote-syntax link-id) ...)
-              (#%plain-app void (quote-syntax sig-id) ...)
-              (#%plain-app void (quote-syntax import-link) ...)
-              (#%plain-app void (quote-syntax export-link) ...)
-              infer-table
-              untyped-compound-unit-exp:expr))
-           #:attr link-id-mapping (map cons 
-                                    (syntax->list #'(link-id ...))
-                                    (syntax->list #'(sig-id ...)))
-           #:attr import-link-ids (syntax->list #'(import-link ...))
-           #:attr export-link-ids (syntax->list #'(export-link ...))
-           #:with compound-unit #'untyped-compound-unit-exp))
+  #:literals (vector-immutable cons)
+  (pattern 
+   (let-values ([(deps:id) _]
+                [(local-unit-name) unit-expr] ...)
+     (~seq (#%plain-app check-unit _ ...)
+           (#%plain-app check-sigs _
+                        (#%plain-app 
+                         vector-immutable
+                         (#%plain-app cons (quote import-sig:id) _) ...)
+                        (#%plain-app
+                         vector-immutable
+                         (#%plain-app cons (quote export-sig:id) _) ...)
+                        _)
+           (let-values ([(fht) _]
+                        [(rht) _])
+             _ ...)) ...
+     (#%plain-app
+            make-unit:id
+            name:expr 
+            import-vector:sig-vector
+            export-vector:sig-vector
+            deps-ref
+            internals))
+   ;; Place holder attributes
+   #:with builder #'make-compound-unit
+   #:attr link-id-mapping '()
+   #:attr import-link-ids '()
+   #:attr export-link-ids '()
+   #:attr compound-imports #'import-vector.sigs
+   #:attr compound-exports #'export-vector.sigs
+   #:with compound-unit #'5))
 
 (define-syntax-class compound-unit-expr
   #:literal-sets (kernel-literals)
@@ -388,6 +401,8 @@
 (define (parse-compound-unit stx)
   (syntax-parse stx
     [cu:compound-unit-expansion
+     (printf "\n\nActually found a compound-unit!\n\n")
+     (printf "compound-unit: ~a\n" #'cu.builder)
      (define mapping (attribute cu.link-id-mapping))
      (define link-ids (map car mapping))
      (define export-signatures 
@@ -543,6 +558,7 @@
         (parse-compound-unit-expr form))
       
       (define import-sigs (map lookup-signature (map lookup-link-id import-link-ids)))
+      (printf "import-sigs: ~a\n" import-sigs)
       (define export-sigs (map lookup-signature export-sig-ids))
             
       (define unit-expected-type 

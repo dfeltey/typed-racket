@@ -24,7 +24,7 @@
     #:literal-sets (kernel-literals)
     #:literals (values define-signature-internal)
     [(define-values ()
-       (begin (quote (define-signature-internal name super (binding ...) check))
+       (begin (quote-syntax (define-signature-internal name super (binding ...) check) #:local)
               (#%plain-app values)))
      (define check? (syntax->datum #'check))
      (define extends (get-extended-signature #'name #'super check? form))

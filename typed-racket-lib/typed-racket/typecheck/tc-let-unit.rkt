@@ -109,19 +109,32 @@
 (define (regsiter-aliases-and-declarations names exprs)
   ;; Collect the declarations, which are represented as expressions.
   ;; We put them back into definitions to reuse the existing machinery
-  (define-values (type-aliases declarations)
-    (for/fold ([aliases '()] [declarations '()])
+  (define-values (type-aliases declarations signature-forms)
+    (for/fold ([aliases '()] [declarations '()] [signature-forms '()])
               ([body (in-list exprs)])
       (syntax-parse #`(define-values () #,body)
         [t:type-alias
-         (values (cons #'t aliases) declarations)]
+         (values (cons #'t aliases) declarations signature-forms)]
         [t:type-declaration
-         (values aliases (cons (list #'t.id #'t.type) declarations))]
-        [_ (values aliases declarations)])))
+         (values aliases (cons (list #'t.id #'t.type) declarations) signature-forms)]
+        [t:typed-define-signature
+           (values aliases declarations (cons #'t signature-forms))]
+        [_ (values aliases declarations signature-forms)])))
 
   (define-values (alias-names alias-map) (get-type-alias-info type-aliases))
   (register-all-type-aliases alias-names alias-map)
 
+  ;; add local signature definitions to the signature environment
+  ;; the list must be traversed in reverse order to make sure
+  ;; sub-signatures can reference their parents
+  ;; TODO: Should signatures be registered before or after aliases?
+  (define signatures
+    (for/list ([sig-form (in-list (reverse signature-forms))])
+      (define-values (name signature)
+        (parse-signature sig-form))
+      (register-signature! name signature)
+      signature))
+  
   (for ([declaration declarations])
     (match-define (list id type) declaration)
     (register-type-if-undefined id (parse-type type))
@@ -132,7 +145,9 @@
   (for ([n (in-list names)] [b (in-list exprs)])
     (syntax-case n ()
       [(var) (add-scoped-tvars b (lookup-scoped-tvars #'var))]
-      [_ (void)])))
+      [_ (void)]))
+  ;; return signatures to ensure they do not escape a let body
+  signatures)
 
 ;; The `thunk` argument is run only for its side effects 
 ;; It is needed to typecheck units, and ensure that exported
@@ -141,46 +156,8 @@
   (let* ([names (stx-map syntax->list namess)]
          [orig-flat-names (apply append names)]
          [exprs (syntax->list exprs)])
-    (regsiter-aliases-and-declarations names exprs)
-    ;; Collect the declarations, which are represented as expression.
-    ;; We put them back into definitions to reuse the existing machinery
-    (define-values (type-aliases declarations signature-forms)
-      (for/fold ([aliases '()] [declarations '()] [signature-forms '()])
-                ([body (in-list exprs)])
-        (syntax-parse #`(define-values () #,body)
-          [t:type-alias
-           (values (cons #'t aliases) declarations signature-forms)]
-          [t:type-declaration
-           (values aliases (cons (list #'t.id #'t.type) declarations) signature-forms)]
-          [t:typed-define-signature
-           (values aliases declarations (cons #'t signature-forms))]
-          [_ (values aliases declarations signature-forms)])))
+    (define signatures (regsiter-aliases-and-declarations names exprs))
     
-    (define-values (alias-names alias-map) (get-type-alias-info type-aliases))
-    (register-all-type-aliases alias-names alias-map)
-
-    (for ([declaration declarations])
-      (match-define (list id type) declaration)
-      (register-type-if-undefined id (parse-type type))
-      (register-scoped-tvars id (parse-literal-alls type)))
-
-    ;; add scoped type variables, before we get to typechecking
-    ;; FIXME: can this pass be fused with the one immediately above?
-    (for ([n (in-list names)] [b (in-list exprs)])
-      (syntax-case n ()
-        [(var) (add-scoped-tvars b (lookup-scoped-tvars #'var))]
-        [_ (void)]))
-    
-    ;; add local signature definitions to the signature environment
-    ;; the list must be traversed in reverse order to make sure
-    ;; sub-signatures can reference their parents
-    (define signatures
-      (for/list ([sig-form (in-list (reverse signature-forms))])
-        (define-values (name signature)
-          (parse-signature sig-form))
-        (register-signature! name signature)
-        signature))
-
     ;; First look at the clauses that do not bind the letrec names
     (define all-clauses
       (for/list ([name-lst names] [expr exprs])

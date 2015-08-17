@@ -26,11 +26,13 @@
     [(define-values ()
        (begin (quote-syntax (define-signature-internal name super (binding ...) check) #:local)
               (#%plain-app values)))
+     (define raw-map (syntax->list #'(binding ...)))
      (define check? (syntax->datum #'check))
      (define extends (get-extended-signature #'name #'super check? form))
      (define super-bindings (get-signature-mapping extends))
-     (define new-bindings (map parse-signature-binding (syntax->list #'(binding ...))))
+     (define new-bindings (map parse-signature-binding raw-map))
      (define pre-mapping (append super-bindings new-bindings))
+     (define types-stx (map (lambda (b) (parse-signature-binding b #f)) raw-map))
 
      ;; Make sure a require/typed signature has bindings listed
      ;; that are consistent with its statically determined bindings
@@ -43,7 +45,7 @@
      (define mapping (if check?
                          (fix-order #'name pre-mapping)
                          pre-mapping))
-     (values #'name (make-Signature #'name extends mapping))]))
+     (values #'name (make-Signature #'name extends mapping types-stx))]))
 
 ;; check-signature-bindings : Identifier (Listof Identifier) -> Void
 ;; checks that the bindings of a signature identifier are consistent with
@@ -82,10 +84,12 @@
 ;; parse-signature-binding : Syntax -> (list/c identifier? syntax?)
 ;; parses the binding forms inside of a define signature into the 
 ;; form used by the Signature type representation
-(define (parse-signature-binding binding-stx)
+(define (parse-signature-binding binding-stx [make-binding? #t])
   (syntax-parse binding-stx
     [[name:id type]
-     (cons #'name (parse-type #'type))]))
+     (if make-binding?
+         (cons #'name (parse-type #'type))
+         #'(type))]))
 
 ;; signature->bindings : identifier? -> (listof (cons/c identifier? type?))
 ;; GIVEN: a signature name

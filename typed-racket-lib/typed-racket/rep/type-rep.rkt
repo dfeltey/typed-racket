@@ -562,7 +562,8 @@
 ;; This is not a type because signatures are not values
 (def-type Signature ([name identifier?]
                      [extends (or/c Signature? #f)]
-                     [mapping (listof (cons/c identifier? Type/c))])
+                     [mapping (listof (cons/c identifier? Type/c))]
+                     [types-stx (listof syntax?)])
   ;; TODO: is this correct?
   [#:frees (lambda (f) null)]
   [#:fold-rhs (*Signature name extends mapping)])

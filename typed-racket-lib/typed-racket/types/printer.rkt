@@ -513,7 +513,7 @@
        (export ,@(map t->s exports))
        (init-depend ,@(map t->s init-depends))
        ,(t->s body))]
-    [(Signature: name extends mapping)
+    [(Signature: name extends mapping _)
      (syntax->datum name)]
     [(Result: t (or (NoFilter:) (FilterSet: (Top:) (Top:))) (or (NoObject:) (Empty:))) (type->sexp t)]
     [(Result: t fs (Empty:)) `(,(type->sexp t) : ,(filter->sexp fs))]

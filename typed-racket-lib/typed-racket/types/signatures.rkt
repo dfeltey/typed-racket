@@ -13,7 +13,8 @@
                        (typecheck internal-forms)))
 
 (provide check-sub-signatures?
-         valid-signatures?)
+         valid-signatures?
+         flatten-sigs)
 
 ;; check-subsignatures? : (listof Signature) (listof Signature) -> boolean?
 ;; checks that the first list of signatures is a valid "subtype"/extensions
@@ -38,6 +39,12 @@
   (if sig
       (cons (Signature-name sig)
             (signature-extensions (Signature-extends sig)))
+      null))
+
+(define (flatten-sigs sig)
+  (if sig
+      (cons sig
+            (flatten-sigs (Signature-extends sig)))
       null))
 
 

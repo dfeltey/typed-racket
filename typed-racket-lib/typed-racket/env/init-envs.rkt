@@ -120,14 +120,19 @@
               (set-box! cache-box
                         (dict-set (unbox cache-box) v (list name class-type))))
             (if cache-box name class-type)])]
-    [(Signature: name extends mapping)
+    [(Signature: name extends mapping types-stx)
      (define (serialize-mapping m)
        (map (lambda (id/ty) 
               (define id (car id/ty))
               (define ty (cdr id/ty))
               `(cons (quote-syntax ,id) ,(sub ty)))
             m))
-     `(make-Signature (quote-syntax ,name) ,(sub extends) (list ,@(serialize-mapping mapping)))]
+     (define (serialize-types-stx stx)
+       (map (lambda (ty-stx) `(quote-syntax ,ty-stx)) stx))
+     `(make-Signature (quote-syntax ,name)
+                      ,(sub extends)
+                      (list ,@(serialize-mapping mapping))
+                      (list ,@(serialize-types-stx types-stx)))]
     [(arr: dom rng rest drest kws)
      `(make-arr ,(sub dom) ,(sub rng) ,(sub rest) ,(sub drest) ,(sub kws))]
     [(TypeFilter: t p)

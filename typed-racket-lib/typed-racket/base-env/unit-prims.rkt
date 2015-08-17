@@ -373,15 +373,7 @@
      (ignore
       (tr:unit:invoke
        (quasisyntax/loc stx
-         (#%expression
-          (begin
-            (void)
-            (void #,@#'imports.imports)
-            (untyped-invoke-unit
-             #,(tr:unit:invoke:expr-property
-                #'unit-expr
-                #t)
-             #,@(attribute imports.untyped-import)))))))]))
+         (untyped-invoke-unit unit-expr #,@(attribute imports.untyped-import)))))]))
 
 
 (define-syntax (add-tags stx)
@@ -393,25 +385,12 @@
        #:literals (begin define-values define-syntaxes :)
        [(begin b ...)
         #'(add-tags b ...)]
-       [(define-syntaxes (name:id ...) rhs:expr)
-        exp-e]
        [(define-values () (colon-helper (: name:id type) rest ...))
         #`(define-values ()
-            #,(tr:unit:body-exp-def-type-property
-               #'(#%expression
-                  (begin (void (lambda () name))
-                         (colon-helper (: name type) rest ...)))
-               'def/type))]
-       [(define-values (name:id ...) rhs)
-        #`(define-values (name ...)
-            #,(tr:unit:body-exp-def-type-property
-               #'(#%expression
-                  (begin
-                    (void (lambda () name) ...)
-                    rhs))
-               'def/type))]
-       [_
-        (tr:unit:body-exp-def-type-property exp-e 'expr)])]
+            (#%expression
+             (begin (void (lambda () name))
+                    (colon-helper (: name type) rest ...))))]
+       [_ exp-e])]
     [(_ e ...)
      #'(begin (add-tags e) ...)]))
 
@@ -426,7 +405,8 @@
           (import im ...)
           (export ex ...)
           #,@(attribute init-depends.form)
-          (add-tags e ...)))))]))
+          (add-tags e ...)
+          ))))]))
 
 
 (define-trampolining-macro process-define-unit

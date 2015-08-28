@@ -396,6 +396,7 @@
         [(Prompt-TagTop:) (only-untyped prompt-tag?/sc)]
         [(Continuation-Mark-KeyTop:) (only-untyped continuation-mark-key?/sc)]
         [(ClassTop:) (only-untyped class?/sc)]
+        [(UnitTop:) (only-untyped unit?/sc)]
         [(StructTypeTop:) (struct-type/sc null)]
         ;; TODO Figure out how this should work
         ;[(StructTop: s) (struct-top/sc s)]

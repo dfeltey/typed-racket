@@ -32,7 +32,6 @@
      (define super-bindings (get-signature-mapping extends))
      (define new-bindings (map parse-signature-binding raw-map))
      (define pre-mapping (append super-bindings new-bindings))
-     (define types-stx (map (lambda (b) (parse-signature-binding b #f)) raw-map))
 
      ;; Make sure a require/typed signature has bindings listed
      ;; that are consistent with its statically determined bindings
@@ -45,7 +44,7 @@
      (define mapping (if check?
                          (fix-order #'name pre-mapping)
                          pre-mapping))
-     (values #'name (make-Signature #'name extends mapping types-stx))]))
+     (values #'name (make-Signature #'name extends mapping))]))
 
 ;; check-signature-bindings : Identifier (Listof Identifier) -> Void
 ;; checks that the bindings of a signature identifier are consistent with

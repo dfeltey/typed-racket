@@ -12,7 +12,8 @@
          invoke-unit/infer
          define-values/invoke-unit
          define-values/invoke-unit/infer
-         unit-from-context)
+         unit-from-context
+         define-unit-from-context)
 
 
 (require  "../utils/utils.rkt"
@@ -47,7 +48,8 @@
                                        define-values/invoke-unit/infer
                                        compound-unit/infer
                                        define-compound-unit/infer
-                                       unit-from-context))
+                                       unit-from-context
+                                       define-unit-from-context))
           (only-in racket/unit
                    extends
                    import
@@ -65,23 +67,18 @@
 (begin-for-syntax
   (define-literal-set colon #:for-label (:))
 
-  ;; TODO: extend for other sig forms
-  (define-syntax-class def-sig-form
-    #:literal-sets (colon)
-    (pattern [name:id : type]
-             #:with internal-form #'(name type)
-             #:with erased #'name))
+  (define (process-definition-form apply-property stx)
+    (define exp-stx (local-expand stx (syntax-local-context) (kernel-form-identifier-list)))
+    (syntax-parse exp-stx
+      #:literal-sets (kernel-literals)
+      [(begin e ...)
+       (quasisyntax/loc stx
+         (begin #,@(map (λ (e) (process-definition-form apply-property e))
+                        (syntax->list (syntax/loc stx (e ...))))))]
+      [(define-values (name ...) rhs)
+       (quasisyntax/loc stx (define-values (name ...) #,(ignore (apply-property #'rhs))))]
+      [_ exp-stx]))
 
-  (define-splicing-syntax-class extends-form
-    #:literals (extends)
-    (pattern (~seq extends super:id)
-             #:with internal-form #'super
-             #:with extends-id #'super
-             #:attr form #'(extends super))
-    (pattern (~seq)
-             #:with internal-form #'#f
-             #:with extends-id '()
-             #:attr form '()))
 
   (define-splicing-syntax-class init-depend-form
     #:literals (init-depend)
@@ -92,23 +89,6 @@
              #:attr form '()
              #:with names #'()))
   
-  (define-syntax-class unit-expr
-    (pattern e
-             #:with val #'e))
-  
-  ;; More general handling of import/export signatures in units
-  (define-syntax-class unit-imports
-    #:literals (import)
-    (pattern (import sig:sig-spec ...)
-             #:with names #'(sig.sig-name ...)
-             #:attr renamers (attribute sig.rename)))
-
-  (define-syntax-class unit-exports
-    #:literals (export)
-    (pattern (export sig:sig-spec ...)
-             #:with names #'(sig.sig-name ...)
-             #:attr renamers (attribute sig.rename)))
-
   ;; The `rename` attribute in the sig-spec syntax class is used to correctly
   ;; map names of signature bound variables in unit bodies to their names in
   ;; the fully expanded syntax. It applies prefixes and renamings from
@@ -138,70 +118,7 @@
 
                (define rn ((attribute sig.rename) id))
                (or (lookup rn) rn))
-             #:with sig-name #'sig.sig-name))
-
-  ;; extracts the signature members from syntax representing a sequence of signature name
-  (define (signatures-vars stx)
-    (define (signature-vars sig-id)
-      (let-values ([(_0 vars _2 _3)
-                    (signature-members sig-id sig-id)])
-        vars))
-    (apply append (map signature-vars (syntax->list stx)))))
-
-
-;; Abstraction for creating trampolining macros
-(begin-for-syntax
-  (define-syntax-class (begin-form name [arg #'()])
-    #:literals (begin)
-    (pattern (begin e ...)
-             #:with trampoline-form
-             #`(#,name #,@arg e ...)))
-  (define-syntax-class (name-form name)
-    (pattern (_ e ...)
-             #:with trampoline-form
-             #`(begin (#,name e) ...)))
-  (define-splicing-syntax-class (rest-form name arg)
-    (pattern (~seq) 
-             #:with trampoline-form
-             #`(begin))
-    (pattern (~seq e1 e2 ...)
-             #:with trampoline-form
-             #`(begin (#,name #,@arg e1)
-                      (#,name #,@arg e2) ...))))
-
-(define-syntax (define-trampolining-macro stx)
-  (syntax-parse stx
-    [(_ name:id case ...)
-     #`(define-syntax (name stx)
-         (syntax-parse stx
-           [(_) #'(begin)]
-           [(name e)
-            (define exp-e 
-              (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
-            (syntax-parse exp-e
-              #:literal-sets (kernel-literals)
-              [(~var b (begin-form #'name))
-               #'b.trampoline-form]
-              case ...
-              [_ 
-               exp-e])]
-           [(~var e (name-form #'name))
-            #'e.trampoline-form]))]
-    [(_ (name:id arg ...) case ...)
-     #`(define-syntax (name stx)
-         (syntax-parse stx
-           [(_ arg ...) #'(begin)]
-           [(name arg ... e) 
-            (define exp-e 
-              (local-expand #'e (syntax-local-context) (kernel-form-identifier-list)))
-            (syntax-parse exp-e
-              #:literal-sets (kernel-literals)
-              [(~var b (begin-form #'name #`(arg ...)))
-               #'b.trampoline-form]
-              case ...
-              [_ exp-e])]
-           [(_ arg ... (~var exprs (rest-form #'name #`(arg ...))))
-            #'exprs.trampoline-form]))]))
+             #:with sig-name #'sig.sig-name)))
 
 
 ;; imports/members : identifier? -> syntax?
@@ -301,20 +218,9 @@
   (define-syntax-class unit-spec
     #:literals (link)
     (pattern unit-id:id
-             #:attr unit-ids (syntax->list #'(unit-id))
-             #:attr link-units? #f
-             #:with untyped-stx (tr:unit:invoke:expr-property #'(#%expression unit-id) #t)
-             #:with last-id (local-expand #'unit-id
-                                          (syntax-local-context)
-                                          (kernel-form-identifier-list)))
-    (pattern (link uid-inits:id ... uid-last:id)
-             #:attr link-units? #t
-             #:with untyped-stx
-             #`(link uid-inits ... uid-last)
-             #:attr unit-ids (syntax->list #'(uid-inits ... uid-last))
-             #:with last-id (local-expand #'uid-last
-                                          (syntax-local-context)
-                                          (kernel-form-identifier-list)))))
+             #:attr unit-ids (syntax->list #'(unit-id)))
+    (pattern (link uid-inits:id ...)
+             #:attr unit-ids (syntax->list #'(uid-inits ...)))))
 
 ;; Note: This may not correctly handle all use cases of
 ;; define-values/invoke-unit/infer
@@ -336,44 +242,22 @@
                               (attribute dviui.inferred-exports))))))
          #,(ignore (quasisyntax/loc stx dviui.untyped-stx)))]))
 
-;; invoke-unit macro
-(begin-for-syntax
-  (define-splicing-syntax-class invoke-imports
-    #:literals (import)
-    (pattern (~seq)
-             #:attr untyped-import #'()
-             #:with imports #'())
-    (pattern (import sig:id ...)
-             #:attr untyped-import #'((import sig ...))
-             #:with imports #'((quote-syntax sig) ...))))
 
-
-;; need to do extra work to make this work with the existing
-;; invoke-unit machinery
-;; need to also add the local-expanded unit-ids to the table ..
+;; Macros for the typed versions of invoke-unit and invoke-unit/infer
 (define-syntax (invoke-unit/infer stx)
   (syntax-parse stx 
-    [(_ us:unit-spec)
-     (define imports (map
-                      (lambda (sig) (replace-context stx sig))
-                      (infer-imports (attribute us.unit-ids))))
-     (define unit-expr-id #'us.last-id)
+    [(_ . rest)
      (ignore
-      (tr:unit:invoke
-       (quasisyntax/loc stx
-         (#%expression
-          (begin
-            (void (quote-syntax #,unit-expr-id))
-            (void #,@(map (lambda (id) #`(quote-syntax #,id)) imports))
-            (untyped-invoke-unit/infer us.untyped-stx))))))]))
+      (tr:unit:invoke-property
+       (quasisyntax/loc stx (untyped-invoke-unit/infer . rest)) 'infer))]))
 
 (define-syntax (invoke-unit stx)
   (syntax-parse stx
-    [(invoke-unit unit-expr imports:invoke-imports)
+    [(invoke-unit . rest)
      (ignore
-      (tr:unit:invoke
+      (tr:unit:invoke-property
        (quasisyntax/loc stx
-         (untyped-invoke-unit unit-expr #,@(attribute imports.untyped-import)))))]))
+         (untyped-invoke-unit . rest)) #t))]))
 
 
 (define-syntax (add-tags stx)
@@ -385,313 +269,162 @@
        #:literals (begin define-values define-syntaxes :)
        [(begin b ...)
         #'(add-tags b ...)]
+       [(define-syntaxes (name:id ...) rhs:expr)
+        exp-e]
        [(define-values () (colon-helper (: name:id type) rest ...))
         #`(define-values ()
-            (#%expression
-             (begin (void (lambda () name))
-                    (colon-helper (: name type) rest ...))))]
-       [_ exp-e])]
+            #,(tr:unit:body-exp-def-type-property
+               #`(#%expression
+                  (begin (void (lambda () #,(syntax-local-introduce #'name)))
+                         (colon-helper (: name type) rest ...)))
+               'def/type))]
+       [(define-values (name:id ...) rhs)
+        #`(define-values (name ...)
+            #,(tr:unit:body-exp-def-type-property
+               #'(#%expression
+                  (begin
+                    (void (lambda () name) ...)
+                    rhs))
+               'def/type))]
+       [_
+        (tr:unit:body-exp-def-type-property exp-e 'expr)])]
     [(_ e ...)
      #'(begin (add-tags e) ...)]))
 
 (define-syntax (unit stx)
   (syntax-parse stx
     #:literals (import export)
-    [(unit (import im ...) (export ex ...) init-depends:init-depend-form e:unit-expr ...)
+    [(unit imports exports init-depends:init-depend-form e ...)
      (ignore
       (tr:unit
        (quasisyntax/loc stx
          (untyped-unit
-          (import im ...)
-          (export ex ...)
+          imports
+          exports
           #,@(attribute init-depends.form)
-          (add-tags e ...)
-          ))))]))
-
-
-(define-trampolining-macro process-define-unit
-  [(define-values (name:id ...) rhs)
-   #`(define-values (name ...)
-       #,(ignore
-          (tr:unit
-           #'rhs)))])
+          (add-tags e ...)))))]))
 
 ;; define-unit macro
 (define-syntax (define-unit stx)
   (syntax-parse stx
     #:literals (import export)
     [(define-unit uid:id
-       (import im ...)
-       (export ex ...)
+       imports
+       exports
        init-depends:init-depend-form
-       e:unit-expr ...)
-     (quasisyntax/loc stx
-       (process-define-unit 
+       e ...)
+     (process-definition-form
+      (λ (stx) (tr:unit stx))
+      (quasisyntax/loc stx
         (untyped-define-unit uid
-          (import im ...)
-          (export ex ...)
+          imports
+          exports
           #,@(attribute init-depends.form)
           (add-tags e ...))))]))
 
 
 ;; Syntax classes and macro for typed compound-unit
 (begin-for-syntax
-  (define-syntax-class compound-unit-form
-    #:literals (compound-unit)
-    (pattern
-     (~and stx
-           (compound-unit imports:compound-imports
-                          exports:compound-exports
-                          links:compound-links))
-     #:attr import-links (attribute imports.import-tags)
-     #:attr unit-export-links (attribute links.all-export-links)
-     #:attr unit-import-links (attribute links.all-import-links)
-     #:attr untyped-stx #'(untyped-compound-unit imports exports links)))
   (define-syntax-class compound-imports
     #:literals (import)
     (pattern (import lb:link-binding ...)
-             #:with import-link-ids
-             #'(lb.link-qs ...)
-             #:with import-sig-ids
-             #'(lb.sig-qs ...)
-             #:with import-link-map #'(lb.link-map-elem ...)
              #:attr import-tags (syntax->list #'(lb.link-id ...))))
-  (define-syntax-class compound-exports
-    #:literals (export)
-    (pattern (export l:id ...)
-             #:with export-link-ids 
-             #'(void (quote-syntax l) ...)))
   (define-syntax-class compound-links
     #:literals (link)
     (pattern (link ld:linkage-decl ...)
              #:attr all-export-links (map syntax->list (syntax->list #'(ld.exported-keys ...)))
-             #:attr all-import-links (map syntax->list (syntax->list #'(ld.imported-keys ...)))
-             #:with untyped-links
-             #'(link ld.untyped-link-decl ...)
-             #:attr bound-link-ids (apply append (map syntax->list 
-                                                   (syntax->list 
-                                                    #'(ld.bound-link-ids ...))))
-             #:attr bound-sig-ids (apply append (map syntax->list
-                                                     (syntax->list
-                                                      #'(ld.bound-sig-ids ...))))))
+             #:attr all-import-links (map syntax->list (syntax->list #'(ld.imported-keys ...)))))
   (define-syntax-class linkage-decl
     (pattern ((lb:link-binding ...)
               unit-expr:expr
               link-id:id ...)
              #:attr exported-keys #'(lb.link-id ...)
-             #:with imported-keys #'(link-id ...)
-             #:with bound-link-ids #'(lb.link-qs ...)
-             #:with bound-sig-ids #'(lb.sig-qs ...)
-             #:with untyped-link-decl
-             #`((lb ...)
-                #,(tr:unit:compound:expr-property
-                   #`(#%expression
-                      (begin
-                        (void (quote-syntax lb.sig-id) ...)
-                        (void (quote-syntax lb.link-id) ...)
-                        (void (quote-syntax link-id) ...)
-                        unit-expr)) 
-                   #t)
-                link-id ...)))
+             #:with imported-keys #'(link-id ...)))
   (define-syntax-class link-binding
-    (pattern (link-id:id : sig-id:id)
-             #:with link-qs #'(quote-syntax link-id)
-             #:with sig-qs #'(quote-syntax sig-id)
-             #:with link-map-elem #'(link-id sig-id))))
+    (pattern (link-id:id : sig-id:id)))
+
+  (define (build-compound-unit-prop import-tags all-import-links all-export-links)
+    (define table
+      (make-immutable-free-id-table
+       (append
+        (map cons
+             import-tags
+             (map (compose gensym syntax-e) import-tags))
+        (map cons
+             (flatten all-export-links)
+             (map (compose gensym syntax-e) (flatten all-export-links))))))
+    (define imports-tags
+      (map (λ (id) (free-id-table-ref table id #f)) import-tags))
+    (define units-exports
+      (map
+       (λ (lst) (map (λ (id) (free-id-table-ref table id #f)) lst))
+       all-export-links))
+    (define units-imports
+      (map
+       (λ (lst) (map (λ (id) (free-id-table-ref table id #f)) lst))
+       all-import-links))
+    (list imports-tags units-exports units-imports)))
 
 (define-syntax (compound-unit stx)
   (syntax-parse stx
-    [cu:compound-unit-form
-     (define table
-       (make-immutable-free-id-table
-        (append 
-         (map cons
-              (attribute cu.import-links)
-              (map (compose gensym syntax-e) (attribute cu.import-links)))
-         (map cons
-              (flatten (attribute cu.unit-export-links))
-              (map (compose gensym syntax-e) (flatten (attribute cu.unit-export-links)))))))
-     (define imports (map (λ (id) (free-id-table-ref table id)) (attribute cu.import-links)))
-     (define units-exports
-       (map
-        (λ (lst) (map (λ (id) (free-id-table-ref table id)) lst))
-        (attribute cu.unit-export-links)))
-     (define units-imports
-       (map
-        (λ (lst) (map (λ (id) (free-id-table-ref table id)) lst))
-        (attribute cu.unit-import-links)))
+    [(_ imports:compound-imports
+        exports
+        links:compound-links)
+     (define import-tags (attribute imports.import-tags))
+     (define all-import-links (attribute links.all-import-links))
+     (define all-export-links (attribute links.all-export-links))
+     (define prop (build-compound-unit-prop import-tags all-import-links all-export-links))
      (ignore (tr:unit:compound-property
-              (quasisyntax/loc stx #,(attribute cu.untyped-stx))
-              (list imports units-exports units-imports)))]))
+              (quasisyntax/loc stx (untyped-compound-unit imports exports links))
+              prop))]))
 
-(define-trampolining-macro (process-define-compound-unit links sigs im ex infer)
-  [(define-values (name:id ...) rhs)
-   #`(define-values (name ...)
-       #,(ignore
-          (tr:unit:compound-property #`(#%expression (begin links sigs im ex infer rhs)) #t)))])
 
 (define-syntax (define-compound-unit stx)
   (syntax-parse stx
     [(_ uid 
         imports:compound-imports
-        exports:compound-exports
+        exports
         links:compound-links)
-     (quasisyntax/loc stx
-       (process-define-compound-unit
-        (void #,@#'imports.import-link-ids #,@(attribute links.bound-link-ids))
-        (void #,@#'imports.import-sig-ids #,@(attribute links.bound-sig-ids))
-        (void #,@#'imports.import-link-ids)
-        (void)
-        exports.export-link-ids
-        (untyped-define-compound-unit uid
-                                      imports
-                                      exports
-                                      links.untyped-links)))]))
+     (define import-tags (attribute imports.import-tags))
+     (define all-import-links (attribute links.all-import-links))
+     (define all-export-links (attribute links.all-export-links))
+     (define prop (build-compound-unit-prop import-tags all-import-links all-export-links))
+     (process-definition-form
+      (λ (stx) (tr:unit:compound-property stx prop))
+      (quasisyntax/loc stx
+        (untyped-define-compound-unit uid imports exports links)))]))
+
 
 ;; compound-unit/infer
-(begin-for-syntax
-  (define-syntax-class compound-infer-imports
-    #:literals (import)
-    (pattern (import im:infer-link-import ...)
-             #:with import-link-ids
-             #'(im.link-qs ...)
-             #:with import-sig-ids
-             #'(im.sig-qs ...)))
-  
-  (define-syntax-class compound-infer-exports
-    #:literals (export)
-    (pattern (export ex:infer-link-export ...)
-             #:with export-links-or-sigs
-             #'(void (quote-syntax ex.link-or-sig-id) ...)))
-  
-  (define-syntax-class compound-infer-links
-    #:literals (link)
-    (pattern (link lnk:infer-linkage-decl ...)
-             #:attr bound-link-ids (apply append (map syntax->list 
-                                                      (syntax->list 
-                                                       #'(lnk.bound-link-ids ...))))
-             #:attr bound-sig-ids (apply append (map syntax->list
-                                                     (syntax->list
-                                                      #'(lnk.bound-sig-ids ...))))
-             #:with links-untyped 
-             #'(link lnk.linkage-stx ...)
-             #:attr link-table
-             #`(void lnk.linkage-information ...)))
-  
-  (define-syntax-class infer-link-import
-    (pattern sig-id:id
-             #:with sig-qs #'(quote-syntax sig-id)
-             #:with link-qs #`(quote-syntax #,(generate-temporary)))
-    (pattern (link-id:id : sig-id:id)
-             #:with link-qs #'(quote-syntax link-id)
-             #:with sig-qs #'(quote-syntax sig-id)))
-  
-  (define-syntax-class infer-link-export
-    (pattern link-or-sig-id:id))
-  (define (build-linkage-info unit-id lb-sig-ids lb-link-ids link-ids)
-    (match-define-values ((list (cons _ imports) ...) (list (cons _ exports) ...))
-                         (unit-static-signatures unit-id unit-id))
-    (define runtime-id
-      (local-expand unit-id (syntax-local-context) (kernel-form-identifier-list)))
-    (tr:unit:compound:expr-property
-     #`(#%expression
-        (begin
-          (void #,@lb-sig-ids)
-          (void #,@lb-link-ids)
-          (void #,@link-ids)
-          ;; all imports
-          (void #,@(map (lambda (id) #`(quote-syntax #,id)) imports))
-          ;; all exports
-          (void #,@(map (lambda (id) #`(quote-syntax #,id)) exports))
-          (void (quote-syntax #,runtime-id))))
-     'infer))
-  
-  (define-syntax-class infer-linkage-decl
-    (pattern ((lb:link-binding ...)
-              unit-id:id
-              link-id:id ...)
-             #:with bound-link-ids #'(lb.link-qs ...)
-             #:with bound-sig-ids #'(lb.sig-qs ...)
-             #:with linkage-stx
-             #`((lb ...)
-                #,(tr:unit:compound:expr-property
-                   #'unit-id
-                   'infer)
-                link-id ...)
-             #:with linkage-information (build-linkage-info #'unit-id
-                                                            #'((quote-syntax lb.sig-id) ...)
-                                                            #'((quote-syntax lb.link-id) ...)
-                                                            #'((quote-syntax link-id) ...)))
-    (pattern unit-id:id
-             #:with bound-link-ids #'()
-             #:with bound-sig-ids #'()
-             #:with linkage-stx
-             (tr:unit:compound:expr-property #'unit-id 'infer)
-             #:with linkage-information (build-linkage-info #'unit-id
-                                                            #'()
-                                                            #'()
-                                                            #'()))))
-
-;; NOTE/TODO:
-;; - it seems that the docs for compound-unit/infer
-;;   suggest that imports are filled in from the 
-;;   static information bound to the unit-ids
-;;   but simple tests don't seem to confirm this
-;; The typed implementation similarly does not fill
-;; in any import information into the `import` clause
 (define-syntax (compound-unit/infer stx)
   (syntax-parse stx
-    [(_ 
-      imports:compound-infer-imports
-      exports:compound-infer-exports
-      links:compound-infer-links)
+    #:literals (import export link)
+    [(_ . rest)
      (ignore
       (tr:unit:compound-property
        (quasisyntax/loc stx
-         (#%expression
-          (begin
-            (void #,@#'imports.import-link-ids
-                  #,@(attribute links.bound-link-ids))
-            (void #,@#'imports.import-sig-ids
-                  #,@(attribute links.bound-sig-ids))
-            (void #,@#'imports.import-link-ids) 
-            exports.export-links-or-sigs
-            #,(attribute links.link-table)
-            (untyped-compound-unit/infer
-             imports
-             exports 
-             links))))
+         (untyped-compound-unit/infer . rest))
        'infer))]))
 
 (define-syntax (define-compound-unit/infer stx)
   (syntax-parse stx
-    [(_ unit-name:id
-        imports:compound-infer-imports
-        exports:compound-infer-exports
-        links:compound-infer-links)
-     (quasisyntax/loc stx
-       (process-define-compound-unit
-        (void #,@#'imports.import-link-ids
-              #,@(attribute links.bound-link-ids))
-        (void #,@#'imports.import-sig-ids
-              #,@(attribute links.bound-sig-ids))
-        (void #,@#'imports.import-link-ids) 
-        exports.export-links-or-sigs
-        #,(attribute links.link-table)
-        (untyped-define-compound-unit/infer unit-name
-                                            imports
-                                            exports
-                                            links)))]))
+    [(_ . rest)
+     (process-definition-form 
+      (λ (stx) (tr:unit:compound-property stx'infer))
+      (quasisyntax/loc stx (untyped-define-compound-unit/infer . rest)))]))
 
-;; Ignoring renames/prefix/etc for now
+;; unit-from-context forms
 (define-syntax (unit-from-context stx)
   (syntax-parse stx
-    [(_ sig:id)
+    [(_ . rest)
      (ignore
-      (tr:unit:from-context-property
+      (tr:unit:from-context
        (quasisyntax/loc stx
-         (#%expression
-          (begin
-            (void (quote-syntax sig))
-            (untyped-unit-from-context sig))))
-       #t))]))
+         (untyped-unit-from-context . rest))))]))
+
+(define-syntax (define-unit-from-context stx)
+  (syntax-parse stx
+    [(_ . rest)
+     (process-definition-form
+      (λ (stx) (tr:unit:from-context stx))
+      (quasisyntax/loc stx (untyped-define-unit-from-context . rest)))]))

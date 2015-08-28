@@ -23,7 +23,7 @@
       #:Filter (sub-f check-signatures)
       #:Object (sub-o check-signatures))
      type
-     [#:Signature name extends mapping types-stx
+     [#:Signature name extends mapping
       (if (member name escaping-names free-identifier=?)
           (tc-error/fields "signature escapes let body"
                            "signature" (syntax-e name))

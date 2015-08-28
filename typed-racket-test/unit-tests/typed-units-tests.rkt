@@ -49,7 +49,7 @@
    (* n (i:fact (sub1 n)))))
    fact)
    |#
-  [tc-e 
+  [tc-e
    (let ()
      (define-signature a^ ())
      (define-signature b^ ())
@@ -92,7 +92,7 @@
             (export)
         (+ 1 "bad"))
       (error ""))]
-   
+
    ;; factorial with units
    [tc-e
     (let ()
@@ -155,7 +155,7 @@
           (unit (import x^) (export) x)))
       (void))
     -Void]
-   [tc-e 
+   [tc-e
     (let ()
       (define-signature x^ ([x : Number]))
       (unit 
@@ -346,7 +346,7 @@
     -Integer]
 
    ;; subtyping tests
-   [tc-e 
+   [tc-e
     (let ()
       (define-signature x-sig ([x : Integer]))
       (define-signature y-sig ([y : Integer]))
@@ -362,7 +362,7 @@
                               (((S2 : y-sig)) u1 S1)))))
     -Integer]
    ;; Make sure let expressions order the signature processing correctly
-   [tc-e 
+   [tc-e
     (let ()
       (let ()
         (define-signature y-sig ([y : Integer]))
@@ -371,41 +371,235 @@
         (void)))
     -Void]
 
+   ;; check that invoke-unit and invoke-unit/infer both work correctly
+   [tc-e
+    (let ()
+      (define-signature a^ ([a : Integer]))
+      (define-signature aa^ extends a^ ([aa : String]))
+
+      (define-unit u (import a^) (export) a)
+      (define a 1)
+      (define aa "One")
+      (invoke-unit/infer u))
+    -Integer]
+
+   [tc-e
+    (let ()
+      (define-signature a^ ([a : Integer]))
+      (define-signature aa^ extends a^ ([aa : String]))
+
+      (define-unit u (import a^) (export) a)
+      (define a 1)
+      (define aa "One")
+      (invoke-unit u (import aa^)))
+    -Integer]
+
+   ;; Sanity checking combinations of compound-unit and invoke-unit
+   [tc-e
+    (let ()
+      (define-signature a^ ([a : Integer]))
+      (define u@ (unit (import) (export a^) (define a 5)))
+      (invoke-unit
+       (compound-unit
+        (import)
+        (export)
+        (link (((a^1 : a^)) u@)
+              (()
+               (unit
+                 (import a^)
+                 (export)
+                 (values a))
+               a^1))) (import)))
+    -Integer]
+
+    [tc-e
+    (let ()
+      (define-signature a^ ([a : Integer]))
+      (define-unit u@ (import) (export a^) (define a 5))
+      (invoke-unit
+       (compound-unit
+        (import)
+        (export)
+        (link (((a^1 : a^)) u@)
+              (()
+               (unit
+                 (import a^)
+                 (export)
+                 (values a))
+               a^1))) (import)))
+    -Integer]
+
+    ;; make sure that invoke-unit/infer works when there is a link clause
+    [tc-e
+     (let ()
+       (define-signature a^ ([a : Integer]))
+
+       (define-unit u (import) (export a^) (define a 5))
+       (define-unit v (import a^) (export) a)
+
+       (invoke-unit/infer (link u v)))
+     -Integer]
+
+    ;; unit-from-context and define-unit-from-context tests
+    [tc-e
+     (let ()
+       (define-signature a^ ([a : Integer]))
+       (define a 17)
+       (define-unit u (import a^) (export) a)
+       (define-unit-from-context v a^)
+       (define w (compound-unit/infer (import) (export) (link v u)))
+       (invoke-unit w))
+     -Integer]
+
+    [tc-e
+     (let ()
+       (define-signature a^ ([a : Integer]))
+       (define a 17)
+       (define-unit u (import a^) (export) a)
+       (define-unit-from-context v a^)
+       (invoke-unit/infer (link v u)))
+     -Integer]
+
+    [tc-e
+     (let ()
+       (define-signature a^ ([a : Integer]))
+       (define a 17)
+       (define u (unit-from-context a^))
+       (define v (unit (import a^) (export) a))
+       (invoke-unit
+        (compound-unit
+         (import)
+         (export)
+         (link (([A : a^]) u)
+               (() v A)))
+        (import)))
+     -Integer]
+
+   ;; init-depends type errors with compound-unit/define-compound-unit
+   [tc-err
+    (let ()
+      (define-signature a ())
+      (define-signature aa extends a ())
+      (define-unit u1
+        (import )
+        (export aa))
+      (define-unit u2
+        (import a)
+        (export)
+        (init-depend a))
+      (define-unit u3
+        (import)
+        (export aa))
+      (compound-unit
+       (import [A1 : a])
+       (export)
+       (link
+        (([A2 : a]) u1 )
+        (() u2 A)
+        (([A : aa]) u3)))
+      (error ""))]
+
+   [tc-err
+    (let ()
+      (define-signature a ())
+      (define-unit u1
+        (import )
+        (export a))
+      (define-unit u2
+        (import a)
+        (export)
+        (init-depend a))
+      (define-unit u3
+        (import)
+        (export a))
+      (compound-unit
+       (import [A1 : a])
+       (export)
+       (link
+        (([A2 : a]) u1 )
+        (() u2 A)
+        (([A : a]) u3)))
+      (error ""))]
+
+   [tc-err
+    (let ()
+      (define-signature a ())
+      (define-signature aa extends a ())
+      (define-unit u1
+        (import )
+        (export aa))
+      (define-unit u2
+        (import aa)
+        (export))
+      (define-unit u3
+        (import)
+        (export))
+      (compound-unit
+       (import)
+       (export)
+       (link
+        (([A : a]) u1 )
+        (() u2 A)))
+      (error ""))]
+
+   [tc-err
+    (let ()
+      (define-signature a ())
+      (define-unit u1
+        (import )
+        (export a))
+      (define-unit u2
+        (import a)
+        (export)
+        (init-depend a))
+      (define-unit u3
+        (import)
+        (export a))
+      (define-compound-unit w
+        (import [A1 : a])
+        (export)
+        (link
+         (([A2 : a]) u1 )
+         (() u2 A)
+         (([A : a]) u3)))
+      (error ""))]
+
    ;; inference
    [tc-err
     (let ()
       (invoke-unit/infer 1)
       (error ""))]
-   
+
    [tc-err 
     (let ()
       (compound-unit (import) (export) (link (() 1)))
       (error ""))]
+
    [tc-err
     (let ()
       (define-signature x-sig ([x : Integer]))
       (compound-unit (import) (export)
                      (link (() (unit (import x-sig) (export)))))
       (error ""))]
+
    [tc-err
     (let ()
       (define-signature x-sig ([x : Integer]))
       (compound-unit (import) (export)
                      (link (([X : x-sig]) (unit (import) (export)))))
       (error ""))]
+
    [tc-err
     (let ()
       (invoke-unit 1)
       (error ""))]
+
    [tc-err
     (let ()
       (define-signature x-sig ([x : Integer]))
       (invoke-unit (unit (import x-sig) (export) x))
       (error ""))]
-   
-   
 
-   
    [tc-err
     (let ()
       (define-signature x^ ([x : String]))

@@ -562,11 +562,14 @@
 ;; This is not a type because signatures are not values
 (def-type Signature ([name identifier?]
                      [extends (or/c Signature? #f)]
-                     [mapping (listof (cons/c identifier? Type/c))]
-                     [types-stx (listof syntax?)])
+                     [mapping (listof (cons/c identifier? Type/c))])
   ;; TODO: is this correct?
   [#:frees (lambda (f) null)]
   [#:fold-rhs (*Signature name extends mapping)])
+
+;; The supertype of all units, ie values recognized by the
+;; predicate unit?
+(def-type UnitTop () [#:fold-rhs #:base] [#:key 'unit])
 
 ;; interp: imports is the list of imported signatures
 ;;         exports is the list of exported signatures

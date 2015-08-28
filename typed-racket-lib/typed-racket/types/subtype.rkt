@@ -689,6 +689,7 @@
                (or (and init-rest init-rest*
                         (sub init-rest init-rest*))
                    (and (not init-rest) (not init-rest*))))]
+         [((? Unit?) (UnitTop:)) A0]
          [((Unit: imports exports init-depends t) (Unit: imports* exports* init-depends* t*))
           (and (check-sub-signatures? imports* imports)
                (check-sub-signatures? exports exports*)

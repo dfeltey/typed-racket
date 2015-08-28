@@ -391,6 +391,7 @@
     (make-Unit null null null (-values (list -Void)))]
    [(Unit (import) (export))
     (make-Unit null null null (-values (list -Void)))]
+   [UnitTop (make-UnitTop)]
    [FAIL (Unit (export) String)]
    [FAIL (Unit (import) String)]
    [FAIL (Unit (init-depend) String)]

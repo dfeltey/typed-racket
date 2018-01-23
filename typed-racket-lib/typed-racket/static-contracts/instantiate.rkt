@@ -200,7 +200,8 @@
                     [raw-name (in-list raw-names)])
             #`[#,name (recursive-contract #,raw-name
                                             #,(kind->keyword
-                                                (hash-ref recursive-kinds name)))]))
+                                                (hash-ref recursive-kinds name))
+                                            #:can-cache)]))
        #`(letrec (#,@bindings #,@raw-bindings)
            #,(parameterize ([bound-names (append names (bound-names))])
                (recur body)))]
@@ -223,7 +224,8 @@
              (set-name-defined name)
              #`(define #,name
                  (recursive-contract #,(recur sc)
-                                     #,(kind->keyword (hash-ref recursive-kinds name)))))]))
+                                     #,(kind->keyword (hash-ref recursive-kinds name))
+                                     #:can-cache)))]))
   (list (append ;; These contracts are sub-contract definitions used to
                 ;; increase sharing among contracts in a given fixup pass
                 extra-defs

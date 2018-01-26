@@ -5,6 +5,7 @@
          racket/fixnum racket/flonum racket/extflonum
          racket/set
          racket/undefined
+         (only-in racket/contract/base flat-named-contract)
          (only-in racket/async-channel async-channel?)
          (only-in ffi/unsafe cpointer-predicate-procedure?)
          (only-in racket/future future? fsemaphore?)
@@ -222,6 +223,7 @@
 (define (make-any-wrap/c #:on-opaque on-opaque)
   (make-chaperone-contract
    #:name 'Any
+   #:can-cache? #t
    #:first-order (lambda (x) #t)
    #:late-neg-projection (late-neg-projection #:on-opaque on-opaque)))
 
@@ -262,9 +264,13 @@
 
 ;; Contract for "safe" struct predicate procedures.
 ;; We can trust that these obey the type (-> Any Boolean).
-(define (struct-predicate-procedure?/c x)
-  (and (or (struct-predicate-procedure? x)
-           (cpointer-predicate-procedure? x))
-       (not (impersonator? x))))
+(define struct-predicate-procedure?/c
+  (flat-named-contract
+   'struct-predicate-procedure?/c
+   (λ (x)
+     (and (or (struct-predicate-procedure? x)
+              (cpointer-predicate-procedure? x))
+          (not (impersonator? x))))
+   #:can-cache? #t))
 
 (provide any-wrap/c any-wrap-warning/c struct-predicate-procedure?/c)

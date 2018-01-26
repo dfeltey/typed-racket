@@ -109,6 +109,7 @@
   (build-contract-property
    #:stronger object/c-opaque-stronger
    #:name object/c-opaque-name
+   #:can-cache? (λ (ctc) (can-cache-contract? (base-object/c-opaque-obj/c ctc)))
    #:first-order (λ (ctc)
                    (define obj/c (base-object/c-opaque-obj/c ctc))
                    (λ (val)

@@ -448,9 +448,9 @@
                  ;; regexps don't match themselves when used as contracts
                  (not (regexp? v)))
             (flat/sc #`(quote #,v))
-            (flat/sc #`(flat-named-contract '#,v (lambda (x) (equal? x '#,v))) v))]
+            (flat/sc #`(flat-named-contract '#,v (lambda (x) (equal? x '#,v)) #:can-cache? #t) v))]
        [(Base-name/contract: sym ctc)
-        (flat/sc #`(flat-named-contract '#,sym (flat-contract-predicate #,ctc)) sym)]
+        (flat/sc #`(flat-named-contract '#,sym (flat-contract-predicate #,ctc) #:can-cache? #t) sym)]
        [(Distinction: _ _ t) ; from define-new-subtype
         (t->sc t)]
        [(Refinement: par p?)
@@ -540,7 +540,7 @@
        [(Promise: t)
         (promise/sc (t->sc t))]
        [(Opaque: p?)
-        (flat/sc #`(flat-named-contract (quote #,(syntax-e p?)) #,p?))]
+        (flat/sc #`(flat-named-contract (quote #,(syntax-e p?)) #,p? #:can-cache? #t))]
        [(Continuation-Mark-Keyof: t)
         (continuation-mark-key/sc (t->sc t))]
        ;; TODO: this is not quite right for case->
@@ -711,7 +711,7 @@
                                               nm (recursive-sc-use nm*)))))
            (recursive-sc (list nm*) (list (struct/sc nm (ormap values mut?) fields))
                          (recursive-sc-use nm*))]
-          [else (flat/sc #`(flat-named-contract '#,(syntax-e pred?) (lambda (x) (#,pred? x))))])]
+          [else (flat/sc #`(flat-named-contract '#,(syntax-e pred?) (lambda (x) (#,pred? x)) #:can-cache? #t))])]
        [(StructType: s)
         (if (from-untyped? typed-side)
             (fail #:reason (~a "cannot import structure types from"
@@ -1012,7 +1012,7 @@
   (provide (all-defined-out))
 
   (define-syntax-rule (numeric/sc name body)
-    (flat/sc #'(flat-named-contract 'name body) 'name))
+    (flat/sc #'(flat-named-contract 'name body #:can-cache? #t) 'name))
 
   (define positive-byte/sc (numeric/sc Positive-Byte (and/c byte? positive?)))
   (define byte/sc (numeric/sc Byte byte?))

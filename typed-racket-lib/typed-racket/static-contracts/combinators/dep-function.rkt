@@ -38,7 +38,8 @@
                       [(dep ...) dom-deps]
                       [(r-deps ...) rng-deps]
                       [(p-deps ...) pre-deps])
-          #`(->i ([id dep c] ...)
+          #`(->i #:can-cache
+                 ([id dep c] ...)
                  #,@(cond
                       [(not pre) #'()]
                       [else #`(#:pre (p-deps ...)

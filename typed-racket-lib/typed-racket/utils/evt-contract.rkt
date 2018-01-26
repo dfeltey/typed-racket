@@ -13,6 +13,8 @@
   (define ctc (coerce-contract 'evt/c maybe-ctc))
   (unless (chaperone-contract? ctc)
     (raise-argument-error 'evt/c "chaperone-contract?" ctc))
+  (unless (can-cache-contract? ctc)
+    (raise-argument-error 'evt/c "can-cache-contract?" ctc))
   (make-tr-evt/c ctc))
 
 ;; evt/c-proj : Contract -> (Blame -> Any Any -> Any)
@@ -59,4 +61,5 @@
    #:late-neg-projection evt/c-late-neg-proj
    #:first-order evt/c-first-order
    #:stronger evt/c-stronger?
-   #:name evt/c-name))
+   #:name evt/c-name
+   #:can-cache? (λ (c) #t)))

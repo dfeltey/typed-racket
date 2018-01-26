@@ -13,6 +13,7 @@
 (define-syntax-rule (the-contract n pred arity arg ...)
   (make-chaperone-contract
    #:name `(-> ,@(for/list ([i arity]) 'any/c) ,n)
+   #:can-cache? #t
    #:first-order (λ (v) (and (procedure? v) (procedure-arity-includes? v arity)))
    #:late-neg-projection
    (λ (blm)
@@ -86,6 +87,8 @@
 (begin-encourage-inline
   (define (simple-result-> c arity)
     (define c* (coerce-flat-contract 'simple-result-> c))
+    (unless (can-cache-contract? c*)
+      (raise-argument-error 'simple-result-> "cachable predicate" c))
     (define pred (flat-contract-predicate c*))
     (define n (contract-name c*))
     (case arity
